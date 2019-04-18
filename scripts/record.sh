@@ -13,12 +13,18 @@ fi
 # make videos directory
 mkdir -p $VIDEO_DIR
 
+# record to temp filename to avoid rsync issues
+TEMP_FN="/home/pi/current.h264"
+
 # make new filename
 FN=$VIDEO_DIR/`date +%y%m%d_%H%M`_`hostname`.h264
 
 echo "Recording to $FN"
 
 # record for 20 seconds
-raspivid -o $FN -t 20000 -n -fps 3
+raspivid -o $TEMP_FN -t 20000 -n -fps 3
+
+# move temp file to videos directory
+mv $TEMP_FN $FN
 
 echo "Done recording"
