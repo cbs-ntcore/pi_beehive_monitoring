@@ -7,6 +7,7 @@ import socket
 import struct
 import subprocess
 import sys
+import threading
 import time
 
 
@@ -34,6 +35,7 @@ class Worker:
         self.port = port
         # set initial state to unknown
         self.state = None
+        self.state_timestamp = None
         self.hostname = None
         self.number = None
         # read state
@@ -53,6 +55,7 @@ class Worker:
             msg = json.loads(data.decode('utf-8'))
             self.hostname = msg['hostname']
             self.state = msg['state']
+            self.state_timestamp = time.time()
         except socket.timeout:
             return
         except:
@@ -120,14 +123,14 @@ class Queen:
             if w.ip == ip:
                 w.receive_state(conn)
                 conn.close()
-                print("Updated worker state: %s" % (w, ))
+                #print("Updated worker state: %s" % (w, ))
                 return w
         print("Adding new worker %s:%s" % (ip, port))
         self.workers.append(Worker(conn, ip, port))
         conn.close()
-        print("New worker state: %s" % (self.workers[-1].state, ))
+        #print("New worker state: %s" % (self.workers[-1].state, ))
 
-        print("Copying scripts to worker...")
+        #print("Copying scripts to worker...")
         # setup worker again (to copy over scripts)
         self.workers[-1].setup()
         return self.workers[-1]
@@ -152,11 +155,121 @@ class Queen:
 
     def fetch_worker_videos(self, to_dir, autoremove=False):
         for w in self.workers:
-            w.fetch_videos(to_dir, autoremove)
+            d = os.path.join(to_dir, '%i' % w.number)
+            w.fetch_videos(d, autoremove)
+
+
+class QueenThread(threading.Thread):
+    def __init__(self, queen, update_delay=1.0, fetch_delay=30.0):
+        super(QueenThread, self).__init__()
+        self.daemon = True
+        self.queen = queen
+        self.lock = threading.Lock()
+        self._stop_update = False
+        self._update_delay = update_delay
+        self._fetch_delay = fetch_delay
+        self._last_fetch = time.time() - self._fetch_delay
+    
+    def stop(self):
+        with self.lock:
+            self._stop_update = True
+        self.join()
+    
+    def run(self):
+        while True:
+            time.sleep(self._update_delay)
+            with self.lock:
+                if self._stop_update:
+                    break
+                self.queen.update()
+                # fetch videos every N seconds
+                if (time.time() - self._last_fetch) >= self._fetch_delay:
+                    self.queen.fetch_worker_videos('/home/pi/videos/')
+
+
+def worker_from_line(l, queen):
+    ts = l.split()
+    if len(ts) < 2:
+        return None
+    t = ts[1]
+    try:
+        i = int(t)
+    except ValueError:
+        return None
+    for w in queen.workers:
+        if i == w.number:
+            return w
+    return None
+
+    
+def print_cmd_line_help():
+    print("Available commands...")
+    print("  for any command with a [N] replace with the worker number")
+    print("c [N]: configure/setup worker number N (example: c 3)")
+    print("h: help")
+    print("q: quit, destroy queen, shut down program")
+    print("r [N]: toggle recording (start if idle, stop if recording)")
+    print("s: get status of all workers")
+    print("S [N]: start streaming from worker, display in vlc")
+
+
+def run_cmd_line(queen):
+    # start queen thread: runs update in background, use lock for sync
+    t = QueenThread(queen)
+    t.start()
+    while True:
+        # look for user input
+        i = input(">>> ").strip()
+        # if user input requires queen, sync and use
+        if len(i) == 0:
+            continue
+        elif i[0] == 'c':  # configure
+            w = worker_from_line(i)
+            if w is None:
+                print("Invalid worker number: %s" % (i.strip()))
+                continue
+            with queen.lock:
+                w.setup()
+        elif i[0] in 'h?H':  # help
+            print_cmd_line_help()
+        elif i[0] == 'q':  # quit
+            t.stop()
+        elif i[0] == 'r':  # toggle recording
+            w = worker_from_line(i)
+            if w is None:
+                print("Invalid worker number: %s" % (i.strip()))
+                continue
+            # if worker is idle start recording
+            with queen.lock:
+                if w.state == 'idle':
+                    print("Worker %s start_recording" % (w, ))
+                    w.start_recording()
+                elif w.state == 'recording':
+                    print("Worker %s stop_recording" % (w, ))
+                    w.stop_recording()
+        elif i[0] == 's':  # status
+            # print worker states
+            workers = sorted(queen.workers, key=lambda w: w.number)
+            for w in workers:
+                ts = time.strftime(
+                    '%Y-%m-%d %H:%M:%S', time.localtime(w.state_timestamp))
+                print("Worker %i [%s @ %s]" % (w.number, w.state, ts))
+        elif i[0] == 'S':  # stream
+            w = worker_from_line(i)
+            if w is None:
+                print("Invalid worker number: %s" % (i.strip()))
+                continue
+            with queen.lock:
+                if w.state != 'idle':
+                    print(
+                        "Worker %s is not idle, cannot start streaming" % (w, ))
+                    continue
+                w.start_streaming()
 
 
 if __name__ == '__main__':
     queen = Queen()
+    run_cmd_line(queen)
     print("Waiting for workers")
     print("Listening on: %s:%s" % (queen.ip, queen.port))
     t0 = time.time()
