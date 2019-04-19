@@ -10,6 +10,9 @@ export EDITOR=`which nano`
 # location of pi state file
 export STATE_FILE="/home/pi/state"
 
+# location of one-time setup file
+export SETUP_FILE="/home/pi/setup"
+
 # check if state file exists
 if [ ! -f $STATE_FILE ]; then
     # if not, set it to idle

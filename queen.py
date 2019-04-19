@@ -224,7 +224,7 @@ def run_cmd_line(queen):
         if len(i) == 0:
             continue
         elif i[0] == 'c':  # configure
-            w = worker_from_line(i)
+            w = worker_from_line(i, queen)
             if w is None:
                 print("Invalid worker number: %s" % (i.strip()))
                 continue
@@ -235,7 +235,7 @@ def run_cmd_line(queen):
         elif i[0] == 'q':  # quit
             t.stop()
         elif i[0] == 'r':  # toggle recording
-            w = worker_from_line(i)
+            w = worker_from_line(i, queen)
             if w is None:
                 print("Invalid worker number: %s" % (i.strip()))
                 continue
@@ -255,7 +255,7 @@ def run_cmd_line(queen):
                     '%Y-%m-%d %H:%M:%S', time.localtime(w.state_timestamp))
                 print("Worker %i [%s @ %s]" % (w.number, w.state, ts))
         elif i[0] == 'S':  # stream
-            w = worker_from_line(i)
+            w = worker_from_line(i, queen)
             if w is None:
                 print("Invalid worker number: %s" % (i.strip()))
                 continue
