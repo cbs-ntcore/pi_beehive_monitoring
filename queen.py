@@ -72,7 +72,7 @@ class Worker:
     
     def start_streaming(self):
         if self.stream is not None:
-            return
+            self.stream.terminate()
         # make subprocess that sshes into pi and runs /home/pi/scripts/stream.sh
         cmd = "ssh pi@%s bash /home/pi/scripts/stream.sh" % (self.ip, )
         self.stream = subprocess.Popen(cmd.split())
@@ -80,10 +80,6 @@ class Worker:
         time.sleep(1.0)  # give time to start stream
         vlc_cmd = 'vlc tcp/h264://%s:2222' % (self.ip, )
         subprocess.check_call(vlc_cmd.split())
-    
-    def stop_streaming(self):
-        if self.stream is not None:
-            self.stream.terminate()
 
     def run_script(self, name):
         cmd = "ssh pi@%s bash /home/pi/scripts/%s.sh" % (self.ip, name)
