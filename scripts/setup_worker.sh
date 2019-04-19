@@ -22,14 +22,13 @@ rsync -rtuv /home/pi/scripts/* $WORKER:/home/pi/scripts
 # start ping
 ssh $WORKER /home/pi/scripts/setup.sh
 
+# copy over scripts
+rsync -rtuv /home/pi/scripts/* $WORKER:/home/pi/scripts
+
+# start ping
+ssh $WORKER /home/pi/scripts/setup.sh
+
 # synchronize date
-# requires passwordless sudo permission for the date command on the worker
-# enable this by:
-# - sshing into client
-# - run: sudo visudo
-# - add the following lines (without the # character)
-#
-# Cmnd_Alias DATE=/bin/date
-# %pi ALL=(root) NOPASSWD: DATE
-DATE=`date`
-ssh sudo date --set="$DATE"
+DATE=`date -I"seconds"`
+echo "Setting worker date: $DATE"
+ssh $WORKER sudo date --set="$DATE"

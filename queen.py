@@ -185,6 +185,7 @@ class QueenThread(threading.Thread):
                 # fetch videos every N seconds
                 if (time.time() - self._last_fetch) >= self._fetch_delay:
                     self.queen.fetch_worker_videos('/home/pi/videos/')
+                    self._last_fetch = time.time()
 
 
 def worker_from_line(l, queen):
@@ -215,8 +216,8 @@ def print_cmd_line_help():
 
 def run_cmd_line(queen):
     # start queen thread: runs update in background, use lock for sync
-    t = QueenThread(queen)
-    t.start()
+    queen_thread = QueenThread(queen)
+    queen_thread.start()
     while True:
         # look for user input
         i = input(">>> ").strip()
@@ -228,19 +229,19 @@ def run_cmd_line(queen):
             if w is None:
                 print("Invalid worker number: %s" % (i.strip()))
                 continue
-            with queen.lock:
+            with queen_thread.lock:
                 w.setup()
         elif i[0] in 'h?H':  # help
             print_cmd_line_help()
         elif i[0] == 'q':  # quit
-            t.stop()
+            queen_thread.stop()
         elif i[0] == 'r':  # toggle recording
             w = worker_from_line(i, queen)
             if w is None:
                 print("Invalid worker number: %s" % (i.strip()))
                 continue
             # if worker is idle start recording
-            with queen.lock:
+            with queen_thread.lock:
                 if w.state == 'idle':
                     print("Worker %s start_recording" % (w, ))
                     w.start_recording()
@@ -259,7 +260,7 @@ def run_cmd_line(queen):
             if w is None:
                 print("Invalid worker number: %s" % (i.strip()))
                 continue
-            with queen.lock:
+            with queen_thread.lock:
                 if w.state != 'idle':
                     print(
                         "Worker %s is not idle, cannot start streaming" % (w, ))

@@ -23,5 +23,5 @@ if [ ! -f $SETUP_FILE ]; then
     echo 'Cmnd_Alias DATE=/bin/date \n%pi ALL=(root) NOPASSWD: DATE' | sudo EDITOR='tee -a' visudo
     
     # change timezone to US eastern
-    mv /usr/share/zoneinfo/US/Eastern /etc/localtime
+    sudo cp /usr/share/zoneinfo/US/Eastern /etc/localtime
 fi
