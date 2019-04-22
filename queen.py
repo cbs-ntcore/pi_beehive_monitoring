@@ -150,6 +150,8 @@ class Queen:
         return
 
     def fetch_worker_videos(self, to_dir, autoremove=False):
+        if not os.path.exists(to_dir):
+            os.makedirs(to_dir)
         for w in self.workers:
             d = os.path.join(to_dir, '%i' % w.number)
             w.fetch_videos(d, autoremove)
@@ -231,6 +233,7 @@ def run_cmd_line(queen):
             print_cmd_line_help()
         elif i[0] == 'q':  # quit
             queen_thread.stop()
+            break
         elif i[0] == 'r':  # toggle recording
             w = worker_from_line(i, queen)
             if w is None:

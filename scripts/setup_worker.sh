@@ -14,7 +14,7 @@ fi
 WORKER="worker$WORKER_NUMBER.local"
 
 # copy over ssh keys (will learn ssh fingerprint)
-rsync -rtuv /home/pi/.ssh/id_rsa.pub /home/pi/.ssh/authorized_keys $WORKER:/home/pi/.ssh
+rsync -rtuv /home/pi/.ssh/authorized_keys $WORKER:/home/pi/.ssh/
 
 # copy over scripts
 rsync -rtuv /home/pi/scripts/* $WORKER:/home/pi/scripts

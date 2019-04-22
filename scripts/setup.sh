@@ -20,7 +20,7 @@ if [ ! -f $SETUP_FILE ]; then
     echo "setup! `date`" > $SETUP_FILE
     
     # allow date to be run without sudo
-    echo 'Cmnd_Alias DATE=/bin/date \n%pi ALL=(root) NOPASSWD: DATE' | sudo EDITOR='tee -a' visudo
+    echo -e 'Cmnd_Alias DATE=/bin/date \n%pi ALL=(root) NOPASSWD: DATE' | sudo EDITOR='tee -a' visudo
     
     # change timezone to US eastern
     sudo cp /usr/share/zoneinfo/US/Eastern /etc/localtime
