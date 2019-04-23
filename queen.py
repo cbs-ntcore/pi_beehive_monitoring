@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""
+TODO
+- auto-discover and force state updates for workers on startup?
+- setup queen to automatically run on reboot
+- query worker date and resync
+- extract first frame from video and show in ui
+- give download link for newest video
+"""
 
 import fcntl
 import json
