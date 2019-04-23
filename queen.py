@@ -25,13 +25,15 @@ def get_ip_address(ifname='eth0'):
 
 
 # setup stream command with this ip
-queen_port = 5005
+#queen_port = 5005
 if len(sys.argv) == 1:
     queen_ip = get_ip_address()
 else:
     queen_ip = sys.argv[1]
 
 scripts_directory = '/home/pi/scripts'
+videos_directory = '/home/pi/videos'
+this_directory = os.path.dirname(os.path.realpath(__file__))
 
 
 class Worker:
@@ -54,12 +56,12 @@ class Worker:
             return
         if new_state == 'recording':
             if self.state['state'] != 'idle':
-                raise Exception
+                raise Exception("Can only start recording from idle")
             self.start_recording()
             return
         elif new_state == 'streaming':
             if self.state['state'] != 'idle':
-                raise Exception
+                raise Exception("Can only start streaming from idle")
             self.start_streaming()
             return
         elif new_state == 'idle':
@@ -114,7 +116,7 @@ class Worker:
         return subprocess.check_call(cmd.split())
 
     def purge_videos(self):
-        return run_script('purge_videos')
+        return self.run_script('purge_videos')
 
 
 class Queen(object):
@@ -135,11 +137,14 @@ class Queen(object):
             worker.setup()
             self.workers[hostname] = worker
 
-    def fetch_worker_videos(self, to_dir, autoremove=False):
+    def fetch_worker_videos(self, to_dir=None, autoremove=False):
+        if to_dir is None:
+            to_dir = videos_directory
         self.last_worker_transfer_time = time.time()
         if not os.path.exists(to_dir):
             os.makedirs(to_dir)
-        for w in self.workers:
+        for hostname in self.workers:
+            w = self.workers[hostname]
             d = os.path.join(to_dir, '%i' % w.number)
             w.fetch_videos(d, autoremove)
         self.last_worker_transfer_duration = (
@@ -156,31 +161,84 @@ class Queen(object):
         space, used, perc = ts[1], ts[2], ts[4]
         return space, used, perc
 
+    def get_transfer_info(self, to_dir=None):
+        if to_dir is None:
+            to_dir = videos_directory
+        space, used, perc = self.get_space_in_directory(to_dir)
+        return {
+            'last_transfer': {
+                'time': self.last_worker_transfer_time,
+                'duration': self.last_worker_transfer_duration,
+            },
+            'space': {
+                'total': space,
+                'used': used,
+                'percent_used': perc,
+            },
+        }
+
+
+def setup_periodic_video_transfer(queen, interval=60):
+    if (interval < 60) or (interval > 86401):
+        raise ValueError("Out of range")
+    if hasattr(queen, '_transfer_pcb'):
+        queen._transfer_pcb.stop()
+    cb = tornado.ioloop.PeriodicCallback(
+        queen.fetch_worker_videos, interval * 1000)
+    cb.start()
+    queen._transfer_pcb = cb
+
 
 class QueenSite(tornado.web.RequestHandler):
     def get(self):
         # self.application.queen
         # return list of workers and states
-        s = "Workers:\n"
-        s += "\n".join([str(w) for w in self.application.queen.workers])
-        s += "\n"
-        self.write(s)
+        #s = "Workers:\n"
+        #s += "\n".join([str(w) for w in self.application.queen.workers])
+        #s += "\n"
+        #self.write(s)
+        template = os.path.join(this_directory, 'index.html')
+        self.render(template)
 
 
 class QueenQuery(tornado.web.RequestHandler):
     def get(self):
+        # display all workers with
+        # - state (df, state, last update)
+        # - controls: stream/record, purge
         pass
 
     def post(self):
-        # -- get info --
-        # last transfer time
-        # duration of last transfer
-        # space on disk
-
+        args = list(self.request.arguments.keys())
+        kwargs = {k: self.get_argument(k) for k in args}
+        if 'transfer_info' in kwargs:
+            self.write(json.dumps(self.application.queen.get_transfer_info()))
+        elif 'transfer' in kwargs:
+            # transfer worker videos (periodically in tornado loop?)
+            if 'interval' in kwargs:
+                try:
+                    setup_periodic_video_transfer(
+                        self.application.queen, int(kwargs['interval']))
+                except Exception as e:
+                    self.clear()
+                    self.set_status(400)
+                    self.write("failed to setup periodic transfer: %s" % (e, ))
+                return
+            else:
+                # transfer worker videos
+                try:
+                    self.application.queen.fetch_worker_videos()
+                except Exception as e:
+                    self.clear()
+                    self.set_status(500)
+                    self.write("failed to transfer worker videos: %s" % (e, ))
+        elif 'purge' in kwargs:
+            # clean up old videos [move to worker]
+            for h in self.application.queen.workers:
+                self.application.queen.workers[h].purge_videos()
+            return
         # -- control all workers --
-        # transfer worker videos (periodically in tornado loop?)
-        # clean up old videos [move to worker]
-        pass
+        return
 
 
 class WorkerQuery(tornado.web.RequestHandler):
@@ -211,11 +269,22 @@ class WorkerQuery(tornado.web.RequestHandler):
                 return
             w = self.application.queen.workers[kwargs['hostname']]
             try:
-                w.change_state(new_state)
+                w.change_state(kwargs['new_state'])
             except Exception as e:
                 self.clear()
                 self.set_status(500)
                 self.write("failed to change state: %s" % (e, ))
+            return
+        elif 'purge' in kwargs and 'hostname' in kwargs:
+            print("Purging worker videos: %s" % (kwargs, ))
+            # get worker state
+            if kwargs['hostname'] not in self.application.queen.workers:
+                self.clear()
+                self.set_status(400)
+                self.write("unknown hostname: %s" % (kwargs['hostname'], ))
+                return
+            w = self.application.queen.workers[kwargs['hostname']]
+            w.purge_videos()
             return
         elif 'hostname' in kwargs:
             print("Getting working state: %s" % (kwargs, ))
@@ -239,17 +308,20 @@ class WorkerQuery(tornado.web.RequestHandler):
 class QueenApplication(tornado.web.Application):
     def __init__(self, **kwargs):
         self.queen = Queen()
+        static_path = os.path.join(this_directory, 'static')
         handlers = [
             (r"/", QueenSite),
-            (r"/", QueenQuery),
+            (r"/queen", QueenQuery),
             (r"/worker", WorkerQuery),
+            (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": static_path}),
         ]
         settings = kwargs.copy()
+        setup_periodic_video_transfer(self.queen)
         super().__init__(handlers, **settings)
 
 
 if __name__ == '__main__':
     server = tornado.httpserver.HTTPServer(QueenApplication())
-    # listen on local IP
+    # TODO listen on local IP (and remote?)
     server.listen(8888)
     tornado.ioloop.IOLoop.instance().start()

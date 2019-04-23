@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Bees!</title>
+        <!-- jquery -->
+        <script src="static/jquery-3.4.0.min.js"></script>
+        <script>
+set_worker_state = function(hostname, new_state) {
+    $.ajax({
+        url: "worker",
+        type: "POST",
+        dataType: "json",
+        data: {hostname: hostname, new_state: new_state}});
+};
+
+
+get_worker_info = function() {
+    $.ajax({
+        url: "worker",
+        type: "POST",
+        dataType: "json",
+    }).done(new_worker_info);
+};
+
+
+new_worker_info = function(json) {
+    // update document given new worker info
+    wul = $("ul#worker_list");
+    Object.keys(json)
+        .sort()
+        .forEach(function(hostname, i) {
+            // check if worker already listed
+            li = $("li#" + hostname);
+            if (li.length == 0) {
+                wul.append($("<li>").append().attr("id", hostname));
+                li = $("li#" + hostname);
+            };
+            li.empty();
+            // update list item
+            state = json[hostname];
+            var d = new Date(0);
+            d.setUTCSeconds(state.timestamp);
+            txt = hostname + ": " + state.state + " @ " + d + " [disk:" + state.df + "]";
+            li.text(txt);
+            // add config button
+            if (state.state == "idle") {
+                // add streaming and recording buttons
+                li.append(
+                    $('<button>').on('click', function() {
+                        set_worker_state(hostname, "streaming");
+                     }).text("Stream"));
+                li.append(
+                    $('<button>').on('click', function() {
+                        set_worker_state(hostname, "recording");
+                     }).text("Record"));
+            } else {
+                // add idle/stop button
+                li.append(
+                    $('<button>').on('click', function() {
+                        set_worker_state(hostname, "idle");
+                     }).text("Stop"));
+            };
+        });
+};
+
+
+get_queen_info = function() {
+    $.ajax({
+        url: "queen",
+        type: "POST",
+        dataType: "json",
+        data: {transfer_info: true},
+    }).done(new_queen_info);
+};
+
+
+new_queen_info = function(json) {
+    // display transfer information
+    q = $("div#queen_info");
+    q.empty();
+    // display last_transfer details
+    var tt;
+    if (json.last_transfer.time == null) {
+        tt = null;
+    } else {
+        tt = new Date(0);
+        tt.setUTCSeconds(json.last_transfer.time);
+    };
+    q.append(
+        $("<p>").text(
+            "Last transfer at " + tt + " took " +
+            json.last_transfer.duration + " seconds"));
+    // display space left on disk
+    q.append(
+        $("<p>").text(
+            "Disk space on queen: total: " + json.space.total +
+            " used: " + json.space.used + "[" + json.space.percent_used + "]"));
+    // add purge button
+    q.append(
+        $("<button>").on('click', function() {
+            $.ajax({url: "queen", type: "POST", data: {"purge": true}});
+        }).text("Purge old videos"));
+    // add force transfer button
+    q.append(
+        $("<button>").on('click', function() {
+            $.ajax({url: "queen", type: "POST", data: {"transfer": true}})
+                .done(get_queen_info);
+        }).text("Transfer videos"));
+
+};
+
+
+$(document).ready(function() {
+    // get worker info from queen
+    get_worker_info();
+    get_queen_info();
+    window.setInterval(get_worker_info, 3000);
+    window.setInterval(get_queen_info, 3000);
+});
+
+        </script>
+    </head>
+    <body>
+        <!-- TODO queen info -->
+        <div id="queen_info"></div>
+        <ul id="worker_list">
+            <!-- workers will get added here -->
+        </ul>
+    </body>
+</html>
