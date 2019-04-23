@@ -15,7 +15,6 @@ import tornado
 import tornado.httpserver
 import tornado.ioloop
 import tornado.web
-import tornado.websocket
 
 
 def get_ip_address(ifname='eth0'):
@@ -114,6 +113,9 @@ class Worker:
         cmd += '-rtuv %s:/home/pi/videos/ %s' % (self.ip, to_dir.rstrip('/'))
         return subprocess.check_call(cmd.split())
 
+    def purge_videos(self):
+        return run_script('purge_videos')
+
 
 class Queen(object):
     def __init__(self):
@@ -163,6 +165,22 @@ class QueenSite(tornado.web.RequestHandler):
         s += "\n".join([str(w) for w in self.application.queen.workers])
         s += "\n"
         self.write(s)
+
+
+class QueenQuery(tornado.web.RequestHandler):
+    def get(self):
+        pass
+
+    def post(self):
+        # -- get info --
+        # last transfer time
+        # duration of last transfer
+        # space on disk
+
+        # -- control all workers --
+        # transfer worker videos (periodically in tornado loop?)
+        # clean up old videos [move to worker]
+        pass
 
 
 class WorkerQuery(tornado.web.RequestHandler):
@@ -218,19 +236,13 @@ class WorkerQuery(tornado.web.RequestHandler):
         return
 
 
-class QueenWebSocket(tornado.websocket.WebSocketHandler):
-    def on_message(self, message):
-        # self.application.queen
-        return
-
-
 class QueenApplication(tornado.web.Application):
     def __init__(self, **kwargs):
         self.queen = Queen()
         handlers = [
             (r"/", QueenSite),
+            (r"/", QueenQuery),
             (r"/worker", WorkerQuery),
-            (r"/ws", QueenWebSocket),
         ]
         settings = kwargs.copy()
         super().__init__(handlers, **settings)
