@@ -55,6 +55,7 @@ class Worker:
             msg = json.loads(data.decode('utf-8'))
             self.hostname = msg['hostname']
             self.state = msg['state']
+            print(msg)
             self.state_timestamp = time.time()
         except socket.timeout:
             return
@@ -270,18 +271,3 @@ def run_cmd_line(queen):
 if __name__ == '__main__':
     queen = Queen()
     run_cmd_line(queen)
-    print("Waiting for workers")
-    print("Listening on: %s:%s" % (queen.ip, queen.port))
-    t0 = time.time()
-    while True:
-        try:
-            w = queen.wait_for_worker()
-            if w is not None:
-                print("N workers: %i" % (len(queen.workers), ))
-            if (time.time() - t0) > 30:
-                print("Fetching worker videos")
-                t0 = time.time()
-                queen.fetch_worker_videos('/home/pi/videos/')
-            # TODO look for input to command workers to record etc
-        except KeyboardInterrupt:
-            break

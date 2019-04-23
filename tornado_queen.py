@@ -48,16 +48,37 @@ class Worker:
         return "%s(%s[%s]: %s)" % (
             self.__class__, self.ip, self.hostname, self.state)
 
+    def change_state(self, new_state):
+        if new_state == 'setup':
+            return self.setup()
+        if new_state == self.state['state']:
+            return
+        if new_state == 'recording':
+            if self.state['state'] != 'idle':
+                raise Exception
+            self.start_recording()
+            return
+        elif new_state == 'streaming':
+            if self.state['state'] != 'idle':
+                raise Exception
+            self.start_streaming()
+            return
+        elif new_state == 'idle':
+            if self.state['state'] == 'recording':
+                self.stop_recording()
+            elif self.state['state'] == 'streaming':
+                self.stop_streaming()
+            return
+        else:
+            raise Exception("Unknown state: %s" % (new_state, ))
+
     def update_state(self, state):
-        # TODO encapsulate this in a dictionary?
         self.state = state
-        self.state_timestamp = time.time()
     
     def setup(self):
         # run setup_worker.sh script on queen
         cmd = 'bash %s %s' % (
             os.path.join(scripts_directory, 'setup_worker.sh'), self.number)
-        # TODO use tornado
         subprocess.check_call(cmd.split())
     
     def start_streaming(self):
@@ -65,17 +86,17 @@ class Worker:
             self.stream.terminate()
         # make subprocess that sshes into pi and runs /home/pi/scripts/stream.sh
         cmd = "ssh pi@%s bash /home/pi/scripts/stream.sh" % (self.ip, )
-        # TODO use tornado
         self.stream = subprocess.Popen(cmd.split())
         # receive and display stream
         time.sleep(1.0)  # give time to start stream
         vlc_cmd = 'vlc tcp/h264://%s:2222' % (self.ip, )
-        # TODO use tornado
         subprocess.check_call(vlc_cmd.split())
+
+    def stop_streaming(self):
+        pass
 
     def run_script(self, name):
         cmd = "ssh pi@%s bash /home/pi/scripts/%s.sh" % (self.ip, name)
-        # TODO use tornado
         return subprocess.check_call(cmd.split())
 
     def start_recording(self):
@@ -91,7 +112,6 @@ class Worker:
         if autoremove:
             cmd += '--remove-source-files '
         cmd += '-rtuv %s:/home/pi/videos/ %s' % (self.ip, to_dir.rstrip('/'))
-        # TODO use tornado
         return subprocess.check_call(cmd.split())
 
 
@@ -125,34 +145,77 @@ class Queen(object):
 
     def get_space_in_directory(self, directory):
         # df -h directory | tail -n 1 | awk '{print $2,$3,$5}
-        pass
-
+        cmd = "df -h %s" % directory
+        output = subprocess.check_output(cmd, shell=True).decode('latin8')
+        # parse output
+        lines = output.strip().split(os.linesep)
+        l = lines[-1]
+        ts = l.split()
+        space, used, perc = ts[1], ts[2], ts[4]
+        return space, used, perc
 
 
 class QueenSite(tornado.web.RequestHandler):
     def get(self):
         # self.application.queen
         # return list of workers and states
-        print(self.request.uri)
         s = "Workers:\n"
         s += "\n".join([str(w) for w in self.application.queen.workers])
         s += "\n"
         self.write(s)
 
+
+class WorkerQuery(tornado.web.RequestHandler):
+    def get(self):
+        pass
+
     def post(self):
-        # TODO state update:  TODO add df
-        # curl
-        #  -d "hostname=`hostname`&state=`cat /home/pi/state`"
-        #  -X POST http://queen.local:8888/
-        # TODO state change
-        # TODO configure
-        hostname = self.get_argument('hostname')
-        state = self.get_argument('state')
-        #df = self.get_argument('df')
-        # other?
-        # register new worker
-        self.application.queen.update_worker_state(
-            hostname, state, self.request.remote_ip)
+        ip = self.request.remote_ip
+        args = list(self.request.arguments.keys())
+        kwargs = {k: self.get_argument(k) for k in args}
+        if 'df' in kwargs and 'state' in kwargs and 'hostname' in kwargs:
+            # update state of worker
+            print("Updating working state: %s" % (kwargs, ))
+            state = {
+                'timestamp': time.time(),
+                'state': kwargs['state'],
+                'df': kwargs['df'],
+            }
+            self.application.queen.update_worker_state(
+                kwargs['hostname'], state, ip)
+            return
+        elif 'new_state' in kwargs and 'hostname' in kwargs:
+            print("Changing working state: %s" % (kwargs, ))
+            if kwargs['hostname'] not in self.application.queen.workers:
+                self.clear()
+                self.set_status(400)
+                self.write("unknown hostname: %s" % (kwargs['hostname'], ))
+                return
+            w = self.application.queen.workers[kwargs['hostname']]
+            try:
+                w.change_state(new_state)
+            except Exception as e:
+                self.clear()
+                self.set_status(500)
+                self.write("failed to change state: %s" % (e, ))
+            return
+        elif 'hostname' in kwargs:
+            print("Getting working state: %s" % (kwargs, ))
+            # get worker state
+            if kwargs['hostname'] not in self.application.queen.workers:
+                self.clear()
+                self.set_status(400)
+                self.write("unknown hostname: %s" % (kwargs['hostname'], ))
+                return
+            w = self.application.queen.workers[kwargs['hostname']]
+            self.write(json.dumps(w.state))
+            return
+        # return dict of all workers and state
+        r = {}
+        for h in self.application.queen.workers:
+            r[h] = self.application.queen.workers[h].state
+        self.write(json.dumps(r))
+        return
 
 
 class QueenWebSocket(tornado.websocket.WebSocketHandler):
@@ -166,6 +229,7 @@ class QueenApplication(tornado.web.Application):
         self.queen = Queen()
         handlers = [
             (r"/", QueenSite),
+            (r"/worker", WorkerQuery),
             (r"/ws", QueenWebSocket),
         ]
         settings = kwargs.copy()
