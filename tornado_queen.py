@@ -49,7 +49,9 @@ class Worker:
             self.__class__, self.ip, self.hostname, self.state)
 
     def update_state(self, state):
+        # TODO encapsulate this in a dictionary?
         self.state = state
+        self.state_timestamp = time.time()
     
     def setup(self):
         # run setup_worker.sh script on queen
@@ -96,6 +98,8 @@ class Worker:
 class Queen(object):
     def __init__(self):
         self.workers = {}
+        self.last_worker_transfer_time = None
+        self.last_worker_transfer_duration = None
 
     def update_worker_state(self, hostname, state, ip):
         # lookup worker
@@ -110,11 +114,18 @@ class Queen(object):
             self.workers[hostname] = worker
 
     def fetch_worker_videos(self, to_dir, autoremove=False):
+        self.last_worker_transfer_time = time.time()
         if not os.path.exists(to_dir):
             os.makedirs(to_dir)
         for w in self.workers:
             d = os.path.join(to_dir, '%i' % w.number)
             w.fetch_videos(d, autoremove)
+        self.last_worker_transfer_duration = (
+            time.time() - self.last_worker_transfer_time)
+
+    def get_space_in_directory(self, directory):
+        # df -h directory | tail -n 1 | awk '{print $2,$3,$5}
+        pass
 
 
 
@@ -129,7 +140,7 @@ class QueenSite(tornado.web.RequestHandler):
         self.write(s)
 
     def post(self):
-        # TODO state update:
+        # TODO state update:  TODO add df
         # curl
         #  -d "hostname=`hostname`&state=`cat /home/pi/state`"
         #  -X POST http://queen.local:8888/
@@ -137,6 +148,7 @@ class QueenSite(tornado.web.RequestHandler):
         # TODO configure
         hostname = self.get_argument('hostname')
         state = self.get_argument('state')
+        #df = self.get_argument('df')
         # other?
         # register new worker
         self.application.queen.update_worker_state(
