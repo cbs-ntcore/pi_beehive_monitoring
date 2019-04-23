@@ -10,14 +10,15 @@ if [ "$STATE" != "recording" ]; then
    exit 0
 fi
 
-# make videos directory
-mkdir -p $VIDEO_DIR
+# make directory for today
+DAYDIR=$VIDEO_DIR/`date +%y%m%d`
+mkdir -p $DAYDIR
 
 # record to temp filename to avoid rsync issues
 TEMP_FN="/home/pi/current.h264"
 
 # make new filename
-FN=$VIDEO_DIR/`date +%y%m%d_%H%M`_`hostname`.h264
+FN=$DAYDIR/`date +%y%m%d_%H%M`_`hostname`.h264
 
 echo "Recording to $FN"
 
