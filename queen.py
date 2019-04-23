@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import fcntl
 import json
@@ -9,6 +9,13 @@ import subprocess
 import sys
 import threading
 import time
+
+
+import tornado
+import tornado.httpserver
+import tornado.ioloop
+import tornado.web
+import tornado.websocket
 
 
 def get_ip_address(ifname='eth0'):
@@ -29,42 +36,45 @@ scripts_directory = '/home/pi/scripts'
 
 
 class Worker:
-    def __init__(self, conn, ip, port):
+    def __init__(self, hostname, state, ip):
+        self.state_timestamp = time.time()
+        self.hostname = hostname
+        self.state = state
         self.ip = ip
-        
-        self.port = port
-        # set initial state to unknown
-        self.state = None
-        self.state_timestamp = None
-        self.hostname = None
-        self.number = None
-        # read state
-        self.receive_state(conn)
+        self.number = int(self.hostname.strip('worker').strip('.local'))
         self.stream = None
 
     def __repr__(self):
-        return "%s(%s[%s], %s, %s)" % (
-            self.__class__, self.ip, self.hostname, self.port, self.state)
-    
-    def receive_state(self, conn):
-        """ at the moment this is only 1 character
-        this should probably contain the hostname"""
-        try:
-            data = conn.recv(2048)
-            if not data: return -1
-            msg = json.loads(data.decode('utf-8'))
-            self.hostname = msg['hostname']
-            self.state = msg['state']
-            print(msg)
-            self.state_timestamp = time.time()
-        except socket.timeout:
-            return
-        except:
-            raise
-        # parse number from hostname
-        self.number = int(self.hostname.strip('worker').strip('.local'))
-        return self.state
+        return "%s(%s[%s]: %s)" % (
+            self.__class__, self.ip, self.hostname, self.state)
 
+    def change_state(self, new_state):
+        if new_state == 'setup':
+            return self.setup()
+        if new_state == self.state['state']:
+            return
+        if new_state == 'recording':
+            if self.state['state'] != 'idle':
+                raise Exception
+            self.start_recording()
+            return
+        elif new_state == 'streaming':
+            if self.state['state'] != 'idle':
+                raise Exception
+            self.start_streaming()
+            return
+        elif new_state == 'idle':
+            if self.state['state'] == 'recording':
+                self.stop_recording()
+            elif self.state['state'] == 'streaming':
+                self.stop_streaming()
+            return
+        else:
+            raise Exception("Unknown state: %s" % (new_state, ))
+
+    def update_state(self, state):
+        self.state = state
+    
     def setup(self):
         # run setup_worker.sh script on queen
         cmd = 'bash %s %s' % (
@@ -81,6 +91,9 @@ class Worker:
         time.sleep(1.0)  # give time to start stream
         vlc_cmd = 'vlc tcp/h264://%s:2222' % (self.ip, )
         subprocess.check_call(vlc_cmd.split())
+
+    def stop_streaming(self):
+        pass
 
     def run_script(self, name):
         cmd = "ssh pi@%s bash /home/pi/scripts/%s.sh" % (self.ip, name)
@@ -102,172 +115,129 @@ class Worker:
         return subprocess.check_call(cmd.split())
 
 
-class Queen:
-    def __init__(self, ip=queen_ip, port=queen_port):
-        self.workers = []
-        self.ip = ip
-        self.port = port
-        self.connect()
-    
-    def connect(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((self.ip, self.port))
-        self.wait_for_worker()
-    
-    def add_worker(self, conn, ip, port):
-        for w in self.workers:
-            if w.ip == ip:
-                w.receive_state(conn)
-                conn.close()
-                #print("Updated worker state: %s" % (w, ))
-                return w
-        print("Adding new worker %s:%s" % (ip, port))
-        self.workers.append(Worker(conn, ip, port))
-        conn.close()
-        #print("New worker state: %s" % (self.workers[-1].state, ))
+class Queen(object):
+    def __init__(self):
+        self.workers = {}
+        self.last_worker_transfer_time = None
+        self.last_worker_transfer_duration = None
 
-        #print("Copying scripts to worker...")
-        # setup worker again (to copy over scripts)
-        self.workers[-1].setup()
-        return self.workers[-1]
-    
-    def wait_for_worker(self):
-        try:
-            self.sock.settimeout(0.1)
-            self.sock.listen()
-            (conn, (ip, port)) = self.sock.accept()
-        except socket.timeout:
-            return
-        except:
-            raise
+    def update_worker_state(self, hostname, state, ip):
+        # lookup worker
+        if hostname in self.workers:
+            worker = self.workers[hostname]
+            # update state
+            worker.update_state(state)
         else:
-            return self.add_worker(conn, ip, port)
-    
-    def update(self):
-        w = 1
-        while w is not None:
-            w = self.wait_for_worker()
-        return
+            # if not make new one
+            worker = Worker(hostname, state, ip)
+            worker.setup()
+            self.workers[hostname] = worker
 
     def fetch_worker_videos(self, to_dir, autoremove=False):
+        self.last_worker_transfer_time = time.time()
         if not os.path.exists(to_dir):
             os.makedirs(to_dir)
         for w in self.workers:
             d = os.path.join(to_dir, '%i' % w.number)
             w.fetch_videos(d, autoremove)
+        self.last_worker_transfer_duration = (
+            time.time() - self.last_worker_transfer_time)
+
+    def get_space_in_directory(self, directory):
+        # df -h directory | tail -n 1 | awk '{print $2,$3,$5}
+        cmd = "df -h %s" % directory
+        output = subprocess.check_output(cmd, shell=True).decode('latin8')
+        # parse output
+        lines = output.strip().split(os.linesep)
+        l = lines[-1]
+        ts = l.split()
+        space, used, perc = ts[1], ts[2], ts[4]
+        return space, used, perc
 
 
-class QueenThread(threading.Thread):
-    def __init__(self, queen, update_delay=1.0, fetch_delay=30.0):
-        super(QueenThread, self).__init__()
-        self.daemon = True
-        self.queen = queen
-        self.lock = threading.Lock()
-        self._stop_update = False
-        self._update_delay = update_delay
-        self._fetch_delay = fetch_delay
-        self._last_fetch = time.time() - self._fetch_delay
-    
-    def stop(self):
-        with self.lock:
-            self._stop_update = True
-        self.join()
-    
-    def run(self):
-        while True:
-            time.sleep(self._update_delay)
-            with self.lock:
-                if self._stop_update:
-                    break
-                self.queen.update()
-                # fetch videos every N seconds
-                if (time.time() - self._last_fetch) >= self._fetch_delay:
-                    self.queen.fetch_worker_videos('/home/pi/videos/')
-                    self._last_fetch = time.time()
+class QueenSite(tornado.web.RequestHandler):
+    def get(self):
+        # self.application.queen
+        # return list of workers and states
+        s = "Workers:\n"
+        s += "\n".join([str(w) for w in self.application.queen.workers])
+        s += "\n"
+        self.write(s)
 
 
-def worker_from_line(l, queen):
-    ts = l.split()
-    if len(ts) < 2:
-        return None
-    t = ts[1]
-    try:
-        i = int(t)
-    except ValueError:
-        return None
-    for w in queen.workers:
-        if i == w.number:
-            return w
-    return None
+class WorkerQuery(tornado.web.RequestHandler):
+    def get(self):
+        pass
 
-    
-def print_cmd_line_help():
-    print("Available commands...")
-    print("  for any command with a [N] replace with the worker number")
-    print("c [N]: configure/setup worker number N (example: c 3)")
-    print("h: help")
-    print("q: quit, destroy queen, shut down program")
-    print("r [N]: toggle recording (start if idle, stop if recording)")
-    print("s: get status of all workers")
-    print("S [N]: start streaming from worker, display in vlc")
+    def post(self):
+        ip = self.request.remote_ip
+        args = list(self.request.arguments.keys())
+        kwargs = {k: self.get_argument(k) for k in args}
+        if 'df' in kwargs and 'state' in kwargs and 'hostname' in kwargs:
+            # update state of worker
+            print("Updating working state: %s" % (kwargs, ))
+            state = {
+                'timestamp': time.time(),
+                'state': kwargs['state'],
+                'df': kwargs['df'],
+            }
+            self.application.queen.update_worker_state(
+                kwargs['hostname'], state, ip)
+            return
+        elif 'new_state' in kwargs and 'hostname' in kwargs:
+            print("Changing working state: %s" % (kwargs, ))
+            if kwargs['hostname'] not in self.application.queen.workers:
+                self.clear()
+                self.set_status(400)
+                self.write("unknown hostname: %s" % (kwargs['hostname'], ))
+                return
+            w = self.application.queen.workers[kwargs['hostname']]
+            try:
+                w.change_state(new_state)
+            except Exception as e:
+                self.clear()
+                self.set_status(500)
+                self.write("failed to change state: %s" % (e, ))
+            return
+        elif 'hostname' in kwargs:
+            print("Getting working state: %s" % (kwargs, ))
+            # get worker state
+            if kwargs['hostname'] not in self.application.queen.workers:
+                self.clear()
+                self.set_status(400)
+                self.write("unknown hostname: %s" % (kwargs['hostname'], ))
+                return
+            w = self.application.queen.workers[kwargs['hostname']]
+            self.write(json.dumps(w.state))
+            return
+        # return dict of all workers and state
+        r = {}
+        for h in self.application.queen.workers:
+            r[h] = self.application.queen.workers[h].state
+        self.write(json.dumps(r))
+        return
 
 
-def run_cmd_line(queen):
-    # start queen thread: runs update in background, use lock for sync
-    queen_thread = QueenThread(queen)
-    queen_thread.start()
-    while True:
-        # look for user input
-        i = input(">>> ").strip()
-        # if user input requires queen, sync and use
-        if len(i) == 0:
-            continue
-        elif i[0] == 'c':  # configure
-            w = worker_from_line(i, queen)
-            if w is None:
-                print("Invalid worker number: %s" % (i.strip()))
-                continue
-            with queen_thread.lock:
-                w.setup()
-        elif i[0] in 'h?H':  # help
-            print_cmd_line_help()
-        elif i[0] == 'q':  # quit
-            queen_thread.stop()
-            break
-        elif i[0] == 'r':  # toggle recording
-            w = worker_from_line(i, queen)
-            if w is None:
-                print("Invalid worker number: %s" % (i.strip()))
-                continue
-            # if worker is idle start recording
-            with queen_thread.lock:
-                if w.state == 'idle':
-                    print("Worker %s start_recording" % (w, ))
-                    w.start_recording()
-                elif w.state == 'recording':
-                    print("Worker %s stop_recording" % (w, ))
-                    w.stop_recording()
-        elif i[0] == 's':  # status
-            # print worker states
-            workers = sorted(queen.workers, key=lambda w: w.number)
-            for w in workers:
-                ts = time.strftime(
-                    '%Y-%m-%d %H:%M:%S', time.localtime(w.state_timestamp))
-                print("Worker %i [%s @ %s]" % (w.number, w.state, ts))
-        elif i[0] == 'S':  # stream
-            w = worker_from_line(i, queen)
-            if w is None:
-                print("Invalid worker number: %s" % (i.strip()))
-                continue
-            with queen_thread.lock:
-                if w.state != 'idle':
-                    print(
-                        "Worker %s is not idle, cannot start streaming" % (w, ))
-                    continue
-                w.start_streaming()
+class QueenWebSocket(tornado.websocket.WebSocketHandler):
+    def on_message(self, message):
+        # self.application.queen
+        return
+
+
+class QueenApplication(tornado.web.Application):
+    def __init__(self, **kwargs):
+        self.queen = Queen()
+        handlers = [
+            (r"/", QueenSite),
+            (r"/worker", WorkerQuery),
+            (r"/ws", QueenWebSocket),
+        ]
+        settings = kwargs.copy()
+        super().__init__(handlers, **settings)
 
 
 if __name__ == '__main__':
-    queen = Queen()
-    run_cmd_line(queen)
+    server = tornado.httpserver.HTTPServer(QueenApplication())
+    # listen on local IP
+    server.listen(8888)
+    tornado.ioloop.IOLoop.instance().start()
