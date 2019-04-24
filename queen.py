@@ -120,7 +120,9 @@ class Worker:
         cmd = 'rsync '
         if autoremove:
             cmd += '--remove-source-files '
-        cmd += '-rtuv %s:/home/pi/videos/ %s' % (self.ip, to_dir.rstrip('/'))
+        cmd += (
+            '-rtuvW --ignore-existing --size-only %s:/home/pi/videos/ %s' %
+            (self.ip, to_dir.rstrip('/')))
         return subprocess.check_call(cmd.split())
 
     def purge_videos(self):
