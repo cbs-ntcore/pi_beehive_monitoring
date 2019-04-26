@@ -11,14 +11,16 @@ if [ "$STATE" != "recording" ]; then
 fi
 
 # make directory for today
-DAYDIR=$VIDEO_DIR/`date +%y%m%d`
+DAY=`date +%y%m%d`
+DAYDIR=$VIDEO_DIR/$DAY
 mkdir -p $DAYDIR
 
 # record to temp filename to avoid rsync issues
 TEMP_FN="/home/pi/current.h264"
 
 # make new filename
-FN=$DAYDIR/`date +%y%m%d_%H%M`_`hostname`.h264
+BFN=`date +%y%m%d_%H%M`_`hostname`.h264
+FN=$DAYDIR/$BFN
 
 echo "Recording to $FN"
 
@@ -27,5 +29,11 @@ raspivid -o $TEMP_FN -t 20000 -n -fps 3
 
 # move temp file to videos directory
 mv $TEMP_FN $FN
+
+# update symlink for most recent
+cd $VIDEO_DIR
+SFN=`hostname`.h264
+rm $SFN
+ln -s $DAY/$BFN $SFN
 
 echo "Done recording"

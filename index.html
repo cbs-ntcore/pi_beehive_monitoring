@@ -40,8 +40,15 @@ new_worker_info = function(json) {
             state = json[hostname];
             var d = new Date(0);
             d.setUTCSeconds(state.timestamp);
-            txt = hostname + ": " + state.state + " @ " + d + " [disk:" + state.df + "]";
-            li.text(txt);
+            li.append(
+                $("<img>").attr("src", "/static/" + hostname + ".jpg?" + new Date().getTime()));
+            li.append(
+                $("<a>").text(hostname)
+                    .attr("href", "/static/" + hostname + ".h264"));
+            li.append(
+                $("<span>").text(
+                    ": " + state.state + " @ " +
+                    d + " [disk:" + state.df + "]"));
             // add config button
             if (state.state == "idle") {
                 // add streaming and recording buttons

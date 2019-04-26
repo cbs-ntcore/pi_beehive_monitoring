@@ -42,6 +42,24 @@ else:
 scripts_directory = '/home/pi/scripts'
 videos_directory = '/home/pi/videos'
 this_directory = os.path.dirname(os.path.realpath(__file__))
+static_path = os.path.join(this_directory, 'static')
+
+
+def extract_image(vfn, ifn, frame_number=3):
+    # start subprocess to extract frame from video
+    cmd = [
+        "ffmpeg", "-i", str(vfn),
+        "-vf", 'select=eq(n\,%s), scale=320:-2' % frame_number,
+        "-vframes", "1", "-q:v", "3", str(ifn), "-y"
+    ]
+    st = time.time()
+    p = tornado.process.Subprocess(cmd)
+    f = p.wait_for_exit()
+
+    def extraction_done(f, fn=vfn, t0=st):
+        print("extraction from %s done[%s]" % (fn, time.time() - t0))
+
+    tornado.ioloop.IOLoop.current().add_future(f, extraction_done)
 
 
 class Worker:
@@ -121,7 +139,7 @@ class Worker:
         if autoremove:
             cmd += '--remove-source-files '
         cmd += (
-            '-rtuvW --ignore-existing --size-only %s:/home/pi/videos/ %s' %
+            '-rtuvW --links --exclude=".*" --size-only %s:/home/pi/videos/ %s' %
             (self.ip, to_dir.rstrip('/')))
         return subprocess.check_call(cmd.split())
 
@@ -157,6 +175,14 @@ class Queen(object):
             w = self.workers[hostname]
             d = os.path.join(to_dir, '%i' % w.number)
             w.fetch_videos(d, autoremove)
+            # link current video to static directory
+            lfn = os.path.join(static_path, hostname) + '.h264'
+            cfn = os.path.join(d, hostname) + '.h264'
+            if not os.path.exists(lfn) and os.path.exists(cfn):
+                os.symlink(cfn, lfn)
+            # queue up conversion to jpg?
+            ifn = os.path.splitext(lfn)[0] + '.jpg'
+            extract_image(lfn, ifn)
         self.last_worker_transfer_duration = (
             time.time() - self.last_worker_transfer_time)
 
@@ -318,7 +344,6 @@ class WorkerQuery(tornado.web.RequestHandler):
 class QueenApplication(tornado.web.Application):
     def __init__(self, **kwargs):
         self.queen = Queen()
-        static_path = os.path.join(this_directory, 'static')
         handlers = [
             (r"/", QueenSite),
             (r"/queen", QueenQuery),
@@ -334,4 +359,4 @@ if __name__ == '__main__':
     server = tornado.httpserver.HTTPServer(QueenApplication())
     # TODO listen on local IP (and remote?)
     server.listen(8888)
-    tornado.ioloop.IOLoop.instance().start()
+    tornado.ioloop.IOLoop.current().start()
