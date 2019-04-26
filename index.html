@@ -34,12 +34,33 @@ new_worker_info = function(json) {
             if (li.length == 0) {
                 wul.append($("<li>").append().attr("id", hostname));
                 li = $("li#" + hostname);
+                li.append($("<img>"));
+                li.append($("<a>"));
+                li.append($("<span>"));
+                li.append(
+                    $('<button>').on('click', function() {
+                        set_worker_state(hostname, "streaming");
+                     }).text("Stream").attr("class", "stream_button"));
+                li.append(
+                    $('<button>').on('click', function() {
+                        set_worker_state(hostname, "recording");
+                     }).text("Record").attr("class", "record_button"));
+                li.append(
+                    $('<button>').on('click', function() {
+                        set_worker_state(hostname, "idle");
+                     }).text("Stop").attr("class", "stop_button"));
             };
-            li.empty();
+            //li.empty();
             // update list item
             state = json[hostname];
             var d = new Date(0);
             d.setUTCSeconds(state.timestamp);
+            li.children("img").attr("src", "/static/" + hostname + ".jpg?" + new Date().getTime());
+            li.children("a").text(hostname).attr("href", "/static/" + hostname + ".h264");
+            li.children("span").text(
+                ": " + state.state + " @ " +
+                d + " [disk:" + state.df + "]");
+            /*
             li.append(
                 $("<img>").attr("src", "/static/" + hostname + ".jpg?" + new Date().getTime()));
             li.append(
@@ -49,7 +70,19 @@ new_worker_info = function(json) {
                 $("<span>").text(
                     ": " + state.state + " @ " +
                     d + " [disk:" + state.df + "]"));
+            */
             // add config button
+            // TODO show/hide buttons by state
+            if (state.state == "idle") {
+                li.children(".stream_button").show();
+                li.children(".record_button").show();
+                li.children(".stop_button").hide();
+            } else {
+                li.children(".stream_button").hide();
+                li.children(".record_button").hide();
+                li.children(".stop_button").show();
+            };
+            /*
             if (state.state == "idle") {
                 // add streaming and recording buttons
                 li.append(
@@ -67,6 +100,7 @@ new_worker_info = function(json) {
                         set_worker_state(hostname, "idle");
                      }).text("Stop"));
             };
+            */
         });
 };
 
