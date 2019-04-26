@@ -31,9 +31,9 @@ raspivid -o $TEMP_FN -t 20000 -n -fps 3
 mv $TEMP_FN $FN
 
 # update symlink for most recent
-cd $VIDEO_DIR
-SFN=`hostname`.h264
-rm $SFN
-ln -s $DAY/$BFN $SFN
+#cd $VIDEO_DIR
+#SFN=`hostname`.h264
+#rm $SFN
+#ln -s $DAY/$BFN $SFN
 
 echo "Done recording"

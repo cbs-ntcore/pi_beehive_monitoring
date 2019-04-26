@@ -62,6 +62,31 @@ def extract_image(vfn, ifn, frame_number=3):
     tornado.ioloop.IOLoop.current().add_future(f, extraction_done)
 
 
+def link_newest_worker_video(hostname, directory):
+    # find newest worker video
+    sds = sorted(os.listdir(directory))
+    if len(sds) == 0:
+        return
+    sd = sds[-1]
+    fns = sorted(os.listdir(os.path.join(directory, sd)))
+    if len(fns) == 0:
+        return
+    fn = os.path.join(directory, sd, fns[-1])
+    print("most recent file: %s" % fn)
+
+    # link to /static/{hostname}.h264
+    sfn = os.path.join(static_path, hostname) + '.h264'
+    if os.path.exists(sfn):
+        print("unlinking file: %s" % sfn)
+        os.unlink(sfn)
+    print("linking: %s, %s" % (fn, sfn))
+    os.symlink(fn, sfn)
+
+    # extract jpg
+    ifn = os.path.join(static_path, hostname) + '.jpg'
+    extract_image(sfn, ifn)
+
+
 class Worker:
     def __init__(self, hostname, state, ip):
         self.state_timestamp = time.time()
@@ -139,7 +164,7 @@ class Worker:
         if autoremove:
             cmd += '--remove-source-files '
         cmd += (
-            '-rtuvW --links --exclude=".*" --size-only %s:/home/pi/videos/ %s' %
+            '-rtuvW --exclude=".*" --size-only %s:/home/pi/videos/ %s' %
             (self.ip, to_dir.rstrip('/')))
         return subprocess.check_call(cmd.split())
 
@@ -175,14 +200,15 @@ class Queen(object):
             w = self.workers[hostname]
             d = os.path.join(to_dir, '%i' % w.number)
             w.fetch_videos(d, autoremove)
+            link_newest_worker_video(hostname, d)
             # link current video to static directory
-            lfn = os.path.join(static_path, hostname) + '.h264'
-            cfn = os.path.join(d, hostname) + '.h264'
-            if not os.path.exists(lfn) and os.path.exists(cfn):
-                os.symlink(cfn, lfn)
+            #lfn = os.path.join(static_path, hostname) + '.h264'
+            #cfn = os.path.join(d, hostname) + '.h264'
+            #if not os.path.exists(lfn) and os.path.exists(cfn):
+            #    os.symlink(cfn, lfn)
             # queue up conversion to jpg?
-            ifn = os.path.splitext(lfn)[0] + '.jpg'
-            extract_image(lfn, ifn)
+            #ifn = os.path.splitext(lfn)[0] + '.jpg'
+            #extract_image(lfn, ifn)
         self.last_worker_transfer_duration = (
             time.time() - self.last_worker_transfer_time)
 
