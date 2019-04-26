@@ -190,6 +190,10 @@ class Queen(object):
             worker.setup()
             self.workers[hostname] = worker
 
+    def purge_worker_videos(self):
+        for h in self.workers:
+            self.workers[h].purge_videos()
+
     def fetch_worker_videos(self, to_dir=None, autoremove=False):
         if to_dir is None:
             to_dir = videos_directory
@@ -251,6 +255,15 @@ def setup_periodic_video_transfer(queen, interval=60):
     queen._transfer_pcb = cb
 
 
+def setup_periodic_video_purge(queen, interval=86400):
+    if hasattr(queen, '_purge_pcb'):
+        queen._purge_pcb.stop()
+    cb = tornado.ioloop.PeriodicCallback(
+        queen.purge_worker_videos, interval * 1000)
+    cb.start()
+    queen._purge_pcb = cb
+
+
 class QueenSite(tornado.web.RequestHandler):
     def get(self):
         # self.application.queen
@@ -296,8 +309,7 @@ class QueenQuery(tornado.web.RequestHandler):
                     self.write("failed to transfer worker videos: %s" % (e, ))
         elif 'purge' in kwargs:
             # clean up old videos [move to worker]
-            for h in self.application.queen.workers:
-                self.application.queen.workers[h].purge_videos()
+            self.application.queen.purge_worker_videos()
             return
         # -- control all workers --
         return
@@ -378,6 +390,7 @@ class QueenApplication(tornado.web.Application):
         ]
         settings = kwargs.copy()
         setup_periodic_video_transfer(self.queen)
+        setup_periodic_video_purge(self.queen)
         super().__init__(handlers, **settings)
 
 
