@@ -19,10 +19,13 @@ mkdir -p $DAYDIR
 TEMP_FN="/home/pi/current.h264"
 
 # make new filename
-BFN=`date +%y%m%d_%H%M`_`hostname`.h264
+BFN=`date +%y%m%d_%H%M%S`_`hostname`.h264
 FN=$DAYDIR/$BFN
 
 echo "Recording to $FN"
+
+# make sure there is room for the video by purging any old videos
+bash /home/pi/scripts/purge_videos.sh
 
 # record for 20 seconds
 raspivid -o $TEMP_FN -t 20000 -n -fps 3
