@@ -39,6 +39,8 @@ if len(sys.argv) == 1:
 else:
     queen_ip = sys.argv[1]
 
+# if worker and queen times differ by more than N seconds re-setup the worker
+RESYNC_THRESHOLD_SECONDS = 300
 scripts_directory = '/home/pi/scripts'
 videos_directory = '/home/pi/videos'
 this_directory = os.path.dirname(os.path.realpath(__file__))
@@ -168,13 +170,11 @@ class Worker:
             (self.ip, to_dir.rstrip('/')))
         return subprocess.check_call(cmd.split())
 
-    def purge_videos(self):
-        return self.run_script('purge_videos')
-
 
 class Queen(object):
     def __init__(self):
         self.workers = {}
+        self.errors = []  # TODO expose these to the UI
         self.last_worker_transfer_time = None
         self.last_worker_transfer_duration = None
 
@@ -184,15 +184,25 @@ class Queen(object):
             worker = self.workers[hostname]
             # update state
             worker.update_state(state)
+            # check if time is correct
+            dt = datetime.datetime.now()
+            wdt = datetime.datetime.strptime(
+                state['datetime'][:-6],
+                "Y-%m-%dT%H:%M:%S")
+            ddt = abs((dt - wdt).total_seconds())
+            if (ddt > RESYNC_THRESHOLD_SECONDS):
+                self.errors.append({
+                    "time": time.time(),
+                    "worker": hostname,
+                    "operation": 'resync',
+                    "exception": "worker %s: queen %s" % (wdt, dt),
+                })
+                worker.setup()
         else:
             # if not make new one
             worker = Worker(hostname, state, ip)
             worker.setup()
             self.workers[hostname] = worker
-
-    def purge_worker_videos(self):
-        for h in self.workers:
-            self.workers[h].purge_videos()
 
     def fetch_worker_videos(self, to_dir=None, autoremove=False):
         if to_dir is None:
@@ -200,11 +210,21 @@ class Queen(object):
         self.last_worker_transfer_time = time.time()
         if not os.path.exists(to_dir):
             os.makedirs(to_dir)
-        for hostname in self.workers:
+        for hostname in list(self.workers.keys()):
             w = self.workers[hostname]
             d = os.path.join(to_dir, '%i' % w.number)
-            w.fetch_videos(d, autoremove)
-            link_newest_worker_video(hostname, d)
+            try:
+                w.fetch_videos(d, autoremove)
+                link_newest_worker_video(hostname, d)
+            except Exception as e:
+                # worker transfer failed, remove worker
+                self.errors.append({
+                    "time": time.time(),
+                    "worker": hostname,
+                    "operation": "fetch",
+                    "exception": repr(e),
+                })
+                del self.workers[hostname]
             # link current video to static directory
             #lfn = os.path.join(static_path, hostname) + '.h264'
             #cfn = os.path.join(d, hostname) + '.h264'
@@ -255,15 +275,6 @@ def setup_periodic_video_transfer(queen, interval=60):
     queen._transfer_pcb = cb
 
 
-def setup_periodic_video_purge(queen, interval=86400):
-    if hasattr(queen, '_purge_pcb'):
-        queen._purge_pcb.stop()
-    cb = tornado.ioloop.PeriodicCallback(
-        queen.purge_worker_videos, interval * 1000)
-    cb.start()
-    queen._purge_pcb = cb
-
-
 class QueenSite(tornado.web.RequestHandler):
     def get(self):
         # self.application.queen
@@ -307,10 +318,6 @@ class QueenQuery(tornado.web.RequestHandler):
                     self.clear()
                     self.set_status(500)
                     self.write("failed to transfer worker videos: %s" % (e, ))
-        elif 'purge' in kwargs:
-            # clean up old videos [move to worker]
-            self.application.queen.purge_worker_videos()
-            return
         # -- control all workers --
         return
 
@@ -349,17 +356,6 @@ class WorkerQuery(tornado.web.RequestHandler):
                 self.set_status(500)
                 self.write("failed to change state: %s" % (e, ))
             return
-        elif 'purge' in kwargs and 'hostname' in kwargs:
-            print("Purging worker videos: %s" % (kwargs, ))
-            # get worker state
-            if kwargs['hostname'] not in self.application.queen.workers:
-                self.clear()
-                self.set_status(400)
-                self.write("unknown hostname: %s" % (kwargs['hostname'], ))
-                return
-            w = self.application.queen.workers[kwargs['hostname']]
-            w.purge_videos()
-            return
         elif 'hostname' in kwargs:
             print("Getting working state: %s" % (kwargs, ))
             # get worker state
@@ -390,7 +386,6 @@ class QueenApplication(tornado.web.Application):
         ]
         settings = kwargs.copy()
         setup_periodic_video_transfer(self.queen)
-        setup_periodic_video_purge(self.queen)
         super().__init__(handlers, **settings)
 
 

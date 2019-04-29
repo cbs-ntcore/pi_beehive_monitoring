@@ -13,9 +13,9 @@ HOSTNAME=`hostname`
 STATE=`cat $STATE_FILE`
 
 # send state message to queen
-MSG="{\"hostname\": \"$HOSTNAME\", \"state\": \"`cat $STATE_FILE`\", \"df\": \"$DF\"}"
-#echo "Sending $MSG"
+MSG="{\"hostname\": \"$HOSTNAME\", \"state\": \"`cat $STATE_FILE`\", \"df\": \"$DF\", \"datetime\": \"`date -I"seconds" `\"}"
+echo "Sending $MSG"
 #echo $MSG | nc $QUEEN 5005 -w 1
 
 EMSG=`python3 -c "import urllib.parse; print(urllib.parse.urlencode($MSG))"`
-curl -d "$EMSG" -X POST http://$QUEEN:8888/worker
+#curl -d "$EMSG" -X POST http://$QUEEN:8888/worker
