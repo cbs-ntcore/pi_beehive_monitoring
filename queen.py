@@ -103,6 +103,7 @@ class Worker:
         self.number = int(self.hostname.strip('worker').strip('.local'))
         self.stream = None
         self.fetch_process = None
+        self.last_transfer = {}
 
     def __repr__(self):
         return "%s(%s[%s]: %s)" % (
@@ -177,17 +178,21 @@ class Worker:
         cmd += (
             '-rtuvW --exclude=".*" --size-only %s:/home/pi/videos/ %s' %
             (self.ip, to_dir.rstrip('/')))
+        st = time.time()
         if not in_loop:
             subprocess.check_call(
                 cmd.split(),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL)
-            return link_newest_worker_video(self.hostname, to_dir)
+            link_newest_worker_video(self.hostname, to_dir)
+            self.last_transfer = {'start': st, 'end': time.time()}
+            return
 
         # otherwise run in tornado ioloop
         if self.fetch_process is not None:
             return False
 
+        self.last_transfer = {'start': st}
         self.fetch_process = tornado.process.Subprocess(
             cmd.split(),
             stdout=subprocess.DEVNULL,
@@ -195,8 +200,12 @@ class Worker:
         loop = tornado.ioloop.IOLoop.current()
 
         def transfer_done(future, worker=self):
-            print("Worker[%s] transfer finished")
             worker.fetch_process = None
+            worker.last_transfer['end'] = time.time()
+            print(
+                "Worker[%s] transfer finished: %s" % (
+                    worker.hostname,
+                    worker.last_transfer['end'] - worker.last_transfer['start']))
             link_newest_worker_video(self.hostname, to_dir)
 
         f = self.fetch_process.wait_for_exit()
@@ -357,7 +366,7 @@ class WorkerQuery(tornado.web.RequestHandler):
                 'hostname' in kwargs and
                 'datetime' in kwargs):
             # update state of worker
-            print("Updating working state: %s" % (kwargs, ))
+            print("Updating worker state: %s" % (kwargs, ))
             state = {
                 'timestamp': time.time(),
                 'state': kwargs['state'],
@@ -368,7 +377,7 @@ class WorkerQuery(tornado.web.RequestHandler):
                 kwargs['hostname'], state, ip)
             return
         elif 'new_state' in kwargs and 'hostname' in kwargs:
-            print("Changing working state: %s" % (kwargs, ))
+            print("Changing worker state: %s" % (kwargs, ))
             if kwargs['hostname'] not in self.application.queen.workers:
                 self.clear()
                 self.set_status(400)
@@ -382,8 +391,19 @@ class WorkerQuery(tornado.web.RequestHandler):
                 self.set_status(500)
                 self.write("failed to change state: %s" % (e, ))
             return
+        elif 'hostname' in kwargs and 'transfer_info' in kwargs:
+            print("Getting worker transfer_info: %s" % (kwargs, ))
+            # get worker state
+            if kwargs['hostname'] not in self.application.queen.workers:
+                self.clear()
+                self.set_status(400)
+                self.write("unknown hostname: %s" % (kwargs['hostname'], ))
+                return
+            w = self.application.queen.workers[kwargs['hostname']]
+            self.write(json.dumps(w.last_transfer))
+            return
         elif 'hostname' in kwargs:
-            print("Getting working state: %s" % (kwargs, ))
+            print("Getting worker state: %s" % (kwargs, ))
             # get worker state
             if kwargs['hostname'] not in self.application.queen.workers:
                 self.clear()
