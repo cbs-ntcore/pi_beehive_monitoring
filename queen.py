@@ -8,6 +8,7 @@ TODO
 - give download link for newest video
 """
 
+import datetime
 import fcntl
 import json
 import os
@@ -212,7 +213,7 @@ class Queen(object):
             dt = datetime.datetime.now()
             wdt = datetime.datetime.strptime(
                 state['datetime'][:-6],
-                "Y-%m-%dT%H:%M:%S")
+                "%Y-%m-%dT%H:%M:%S")
             ddt = abs((dt - wdt).total_seconds())
             if (ddt > RESYNC_THRESHOLD_SECONDS):
                 self.errors.append({
@@ -238,7 +239,7 @@ class Queen(object):
             w = self.workers[hostname]
             d = os.path.join(to_dir, '%i' % w.number)
             try:
-                w.fetch_videos(d, autoremove)
+                w.fetch_videos(d, autoremove, in_loop=True)
                 #link_newest_worker_video(hostname, d)
             except Exception as e:
                 # worker transfer failed, remove worker
@@ -346,13 +347,18 @@ class WorkerQuery(tornado.web.RequestHandler):
         ip = self.request.remote_ip
         args = list(self.request.arguments.keys())
         kwargs = {k: self.get_argument(k) for k in args}
-        if 'df' in kwargs and 'state' in kwargs and 'hostname' in kwargs:
+        if (
+                'df' in kwargs and
+                'state' in kwargs and
+                'hostname' in kwargs and
+                'datetime' in kwargs):
             # update state of worker
             print("Updating working state: %s" % (kwargs, ))
             state = {
                 'timestamp': time.time(),
                 'state': kwargs['state'],
                 'df': kwargs['df'],
+                'datetime': kwargs['datetime'],
             }
             self.application.queen.update_worker_state(
                 kwargs['hostname'], state, ip)
