@@ -136,11 +136,6 @@ new_queen_info = function(json) {
         $("<p>").text(
             "Disk space on queen: total: " + json.space.total +
             " used: " + json.space.used + "[" + json.space.percent_used + "]"));
-    // add purge button
-    q.append(
-        $("<button>").on('click', function() {
-            $.ajax({url: "queen", type: "POST", data: {"purge": true}});
-        }).text("Purge old videos"));
     // add force transfer button
     q.append(
         $("<button>").on('click', function() {
