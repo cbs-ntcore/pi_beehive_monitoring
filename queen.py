@@ -57,7 +57,10 @@ def extract_image(vfn, ifn, frame_number=3):
         "-vframes", "1", "-q:v", "3", str(ifn), "-y"
     ]
     st = time.time()
-    p = tornado.process.Subprocess(cmd)
+    p = tornado.process.Subprocess(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL)
     f = p.wait_for_exit()
 
     def extraction_done(f, fn=vfn, t0=st):
@@ -175,14 +178,20 @@ class Worker:
             '-rtuvW --exclude=".*" --size-only %s:/home/pi/videos/ %s' %
             (self.ip, to_dir.rstrip('/')))
         if not in_loop:
-            subprocess.check_call(cmd.split())
+            subprocess.check_call(
+                cmd.split(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
             return link_newest_worker_video(self.hostname, to_dir)
 
         # otherwise run in tornado ioloop
         if self.fetch_process is not None:
             return False
 
-        self.fetch_process = tornado.process.Subprocess(cmd.split())
+        self.fetch_process = tornado.process.Subprocess(
+            cmd.split(),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
         loop = torando.ioloop.IOLoop.current()
 
         def transfer_done(future, worker=self):
