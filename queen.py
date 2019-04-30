@@ -22,6 +22,7 @@ import time
 import tornado
 import tornado.httpserver
 import tornado.ioloop
+import tornado.process
 import tornado.web
 
 
@@ -97,6 +98,7 @@ class Worker:
         self.ip = ip
         self.number = int(self.hostname.strip('worker').strip('.local'))
         self.stream = None
+        self.fetch_process = None
 
     def __repr__(self):
         return "%s(%s[%s]: %s)" % (
@@ -159,7 +161,10 @@ class Worker:
     def stop_recording(self):
         self.run_script("stop_recording")
 
-    def fetch_videos(self, to_dir, autoremove=False):
+    def is_fetching(self):
+        return self.fetch_process is not None
+
+    def fetch_videos(self, to_dir, autoremove=False, in_loop=False):
         # rsync videos from worker to queen directory to_dir
         # delete from worker after transfer
         cmd = 'rsync '
@@ -168,7 +173,26 @@ class Worker:
         cmd += (
             '-rtuvW --exclude=".*" --size-only %s:/home/pi/videos/ %s' %
             (self.ip, to_dir.rstrip('/')))
-        return subprocess.check_call(cmd.split())
+        if not in_loop:
+            subprocess.check_call(cmd.split())
+            return link_newest_worker_video(self.hostname, to_dir)
+
+        # otherwise run in tornado ioloop
+        if self.fetch_process is not None:
+            return False
+
+        self.fetch_process = tornado.process.Subprocess(cmd.split())
+        loop = torando.ioloop.IOLoop.current()
+
+        def transfer_done(future, worker=self):
+            print("Worker[%s] transfer finished")
+            worker.fetch_process = None
+            link_newest_worker_video(self.hostname, to_dir)
+
+        f = self.fetch_process.wait_for_exit()
+        loop.add_future(f, transfer_done)
+        return True
+
 
 
 class Queen(object):
@@ -215,7 +239,7 @@ class Queen(object):
             d = os.path.join(to_dir, '%i' % w.number)
             try:
                 w.fetch_videos(d, autoremove)
-                link_newest_worker_video(hostname, d)
+                #link_newest_worker_video(hostname, d)
             except Exception as e:
                 # worker transfer failed, remove worker
                 self.errors.append({
@@ -225,14 +249,6 @@ class Queen(object):
                     "exception": repr(e),
                 })
                 del self.workers[hostname]
-            # link current video to static directory
-            #lfn = os.path.join(static_path, hostname) + '.h264'
-            #cfn = os.path.join(d, hostname) + '.h264'
-            #if not os.path.exists(lfn) and os.path.exists(cfn):
-            #    os.symlink(cfn, lfn)
-            # queue up conversion to jpg?
-            #ifn = os.path.splitext(lfn)[0] + '.jpg'
-            #extract_image(lfn, ifn)
         self.last_worker_transfer_duration = (
             time.time() - self.last_worker_transfer_time)
 
