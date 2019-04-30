@@ -192,7 +192,7 @@ class Worker:
             cmd.split(),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL)
-        loop = torando.ioloop.IOLoop.current()
+        loop = tornado.ioloop.IOLoop.current()
 
         def transfer_done(future, worker=self):
             print("Worker[%s] transfer finished")
@@ -314,17 +314,13 @@ class QueenSite(tornado.web.RequestHandler):
 
 
 class QueenQuery(tornado.web.RequestHandler):
-    def get(self):
-        # display all workers with
-        # - state (df, state, last update)
-        # - controls: stream/record, purge
-        pass
-
     def post(self):
         args = list(self.request.arguments.keys())
         kwargs = {k: self.get_argument(k) for k in args}
         if 'transfer_info' in kwargs:
             self.write(json.dumps(self.application.queen.get_transfer_info()))
+        elif 'errors' in kwargs:
+            self.write(json.dumps(self.application.queen.errors))
         elif 'transfer' in kwargs:
             # transfer worker videos (periodically in tornado loop?)
             if 'interval' in kwargs:
@@ -347,11 +343,10 @@ class QueenQuery(tornado.web.RequestHandler):
         # -- control all workers --
         return
 
+    get = post
+
 
 class WorkerQuery(tornado.web.RequestHandler):
-    def get(self):
-        pass
-
     def post(self):
         ip = self.request.remote_ip
         args = list(self.request.arguments.keys())
@@ -404,6 +399,8 @@ class WorkerQuery(tornado.web.RequestHandler):
             r[h] = self.application.queen.workers[h].state
         self.write(json.dumps(r))
         return
+    
+    get = post
 
 
 class QueenApplication(tornado.web.Application):
