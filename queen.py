@@ -36,10 +36,10 @@ def get_ip_address(ifname='eth0'):
 
 # setup stream command with this ip
 #queen_port = 5005
-if len(sys.argv) == 1:
-    queen_ip = get_ip_address()
-else:
-    queen_ip = sys.argv[1]
+#if len(sys.argv) == 1:
+#    queen_ip = get_ip_address()
+#else:
+#    queen_ip = sys.argv[1]
 
 # if worker and queen times differ by more than N seconds re-setup the worker
 RESYNC_THRESHOLD_SECONDS = 300
