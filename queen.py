@@ -289,7 +289,7 @@ class Queen(object):
                     "time": time.time(),
                     "worker": hostname,
                     "operation": "fetch",
-                    "exception": repr(e),
+                    "exception": "",
                 })
                 del self.workers[hostname]
                 continue
@@ -387,7 +387,12 @@ class QueenQuery(tornado.web.RequestHandler):
                     self.clear()
                     self.set_status(500)
                     self.write("failed to transfer worker videos: %s" % (e, ))
-        # -- control all workers --
+        else:
+            d = {
+                'transfer_info': self.application.queen.get_transfer_info(),
+                'errors': self.application.queen.errors,
+            }
+            self.write(json.dumps(d))
         return
 
     get = post
