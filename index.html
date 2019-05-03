@@ -62,24 +62,24 @@ new_worker_info = function(json) {
             var tt = new Date(0);
             if (transfer_info['start'] != undefined) {
                 tt.setUTCSeconds(transfer_info['start']);
+            } else {
+                tt.setUTCSeconds(0);
+            };
+            // if tt or d is more than ~5 min old, make them red
+            var cd = new Date();
+            if (
+                    Math.max(Math.abs(cd - d), Math.abs(tt - d)) >
+                    (5 * 60 * 1000)) {
+                txt_color = "red";
+            } else {
+                txt_color = "black";
             };
             li.children("img").attr("src", "/static/" + hostname + ".jpg?" + new Date().getTime());
             li.children("a").text(hostname).attr("href", "/static/" + hostname + ".h264");
             li.children("span").text(
                 ": " + state.state + " @ " +
                 d + " [disk:" + state.df + "] " +
-                tt + " [" + transfer_duration + "]");
-            /*
-            li.append(
-                $("<img>").attr("src", "/static/" + hostname + ".jpg?" + new Date().getTime()));
-            li.append(
-                $("<a>").text(hostname)
-                    .attr("href", "/static/" + hostname + ".h264"));
-            li.append(
-                $("<span>").text(
-                    ": " + state.state + " @ " +
-                    d + " [disk:" + state.df + "]"));
-            */
+                tt + " [" + transfer_duration + "]").css("color", txt_color);
             // add config button
             // TODO show/hide buttons by state
             if (state.state == "idle") {
@@ -91,25 +91,6 @@ new_worker_info = function(json) {
                 li.children(".record_button").hide();
                 li.children(".stop_button").show();
             };
-            /*
-            if (state.state == "idle") {
-                // add streaming and recording buttons
-                li.append(
-                    $('<button>').on('click', function() {
-                        set_worker_state(hostname, "streaming");
-                     }).text("Stream"));
-                li.append(
-                    $('<button>').on('click', function() {
-                        set_worker_state(hostname, "recording");
-                     }).text("Record"));
-            } else {
-                // add idle/stop button
-                li.append(
-                    $('<button>').on('click', function() {
-                        set_worker_state(hostname, "idle");
-                     }).text("Stop"));
-            };
-            */
         });
 };
 
