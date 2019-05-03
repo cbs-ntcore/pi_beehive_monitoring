@@ -64,7 +64,8 @@ def extract_image(vfn, ifn, frame_number=3):
     f = p.wait_for_exit()
 
     def extraction_done(f, fn=vfn, t0=st):
-        print("extraction from %s done[%s]" % (fn, time.time() - t0))
+        #print("extraction from %s done[%s]" % (fn, time.time() - t0))
+        pass
 
     tornado.ioloop.IOLoop.current().add_future(f, extraction_done)
 
@@ -79,14 +80,14 @@ def link_newest_worker_video(hostname, directory):
     if len(fns) == 0:
         return
     fn = os.path.join(directory, sd, fns[-1])
-    print("most recent file: %s" % fn)
+    #print("most recent file: %s" % fn)
 
     # link to /static/{hostname}.h264
     sfn = os.path.join(static_path, hostname) + '.h264'
-    if os.path.exists(sfn):
-        print("unlinking file: %s" % sfn)
+    if os.path.islink(sfn):  # a broken link will return Fales for exists
+        #print("unlinking file: %s" % sfn)
         os.unlink(sfn)
-    print("linking: %s, %s" % (fn, sfn))
+    #print("linking: %s, %s" % (fn, sfn))
     os.symlink(fn, sfn)
 
     # extract jpg
@@ -104,6 +105,8 @@ class Worker:
         self.stream = None
         self.fetch_process = None
         self.last_transfer = {}
+        self.last_transfer_duration = -1
+        self.failed_transfer = None
 
     def __repr__(self):
         return "%s(%s[%s]: %s)" % (
@@ -180,13 +183,15 @@ class Worker:
             (self.ip, to_dir.rstrip('/')))
         st = time.time()
         if not in_loop:
-            subprocess.check_call(
+            r = subprocess.check_call(
                 cmd.split(),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL)
             link_newest_worker_video(self.hostname, to_dir)
             self.last_transfer = {'start': st, 'end': time.time()}
-            return
+            self.last_transfer_duration = (
+                self.last_transfer['end'] - self.last_transfer['start'])
+            return r
 
         # otherwise run in tornado ioloop
         if self.fetch_process is not None:
@@ -202,13 +207,20 @@ class Worker:
         def transfer_done(future, worker=self):
             worker.fetch_process = None
             worker.last_transfer['end'] = time.time()
+            worker.last_transfer['result'] = future.result()
+            worker.last_transfer_duration = (
+                worker.last_transfer['end'] - worker.last_transfer['start'])
             print(
-                "Worker[%s] transfer finished: %s" % (
+                "Worker[%s] transfer finished: %s[%s]" % (
                     worker.hostname,
-                    worker.last_transfer['end'] - worker.last_transfer['start']))
-            link_newest_worker_video(self.hostname, to_dir)
+                    worker.last_transfer_duration,
+                    worker.last_transfer['result']))
+            if future.result == 0:
+                link_newest_worker_video(self.hostname, to_dir)
+            else:
+                self.failed_transfer = self.last_trasnfer.copy()
 
-        f = self.fetch_process.wait_for_exit()
+        f = self.fetch_process.wait_for_exit(raise_error=False)
         loop.add_future(f, transfer_done)
         return True
 
@@ -255,6 +267,16 @@ class Queen(object):
             os.makedirs(to_dir)
         for hostname in list(self.workers.keys()):
             w = self.workers[hostname]
+            if w.failed_transfer is not None:  # last transfer failed
+                # worker transfer failed, remove worker
+                self.errors.append({
+                    "time": time.time(),
+                    "worker": hostname,
+                    "operation": "fetch",
+                    "exception": repr(e),
+                })
+                del self.workers[hostname]
+                continue
             d = os.path.join(to_dir, '%i' % w.number)
             try:
                 w.fetch_videos(d, autoremove, in_loop=True)
@@ -400,7 +422,10 @@ class WorkerQuery(tornado.web.RequestHandler):
                 self.write("unknown hostname: %s" % (kwargs['hostname'], ))
                 return
             w = self.application.queen.workers[kwargs['hostname']]
-            self.write(json.dumps(w.last_transfer))
+            d = {
+                'transfer_info': w.last_transfer,
+                'transfer_duration': w.last_transfer_duration}
+            self.write(json.dumps(d))
             return
         elif 'hostname' in kwargs:
             print("Getting worker state: %s" % (kwargs, ))
@@ -411,12 +436,20 @@ class WorkerQuery(tornado.web.RequestHandler):
                 self.write("unknown hostname: %s" % (kwargs['hostname'], ))
                 return
             w = self.application.queen.workers[kwargs['hostname']]
-            self.write(json.dumps(w.state))
+            d = {
+                'transfer_info': w.last_transfer,
+                'transfer_duration': w.last_transfer_duration,
+                'state': w.state}
+            self.write(json.dumps(d))
             return
         # return dict of all workers and state
         r = {}
         for h in self.application.queen.workers:
-            r[h] = self.application.queen.workers[h].state
+            w = self.application.queen.workers[h]
+            r[h] = {
+                'transfer_info': w.last_transfer,
+                'transfer_duration': w.last_transfer_duration,
+                'state': w.state}
         self.write(json.dumps(r))
         return
     

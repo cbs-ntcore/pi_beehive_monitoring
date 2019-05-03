@@ -27,7 +27,9 @@ new_worker_info = function(json) {
     // update document given new worker info
     wul = $("ul#worker_list");
     Object.keys(json)
-        .sort()
+        .sort(function(a, b){
+            return parseInt(a.substring(6)) - parseInt(b.substring(6));
+        })
         .forEach(function(hostname, i) {
             // check if worker already listed
             li = $("li#" + hostname);
@@ -52,14 +54,21 @@ new_worker_info = function(json) {
             };
             //li.empty();
             // update list item
-            state = json[hostname];
+            state = json[hostname]['state'];
+            transfer_duration = json[hostname]['transfer_duration'];
+            transfer_info = json[hostname]['transfer_info'];
             var d = new Date(0);
             d.setUTCSeconds(state.timestamp);
+            var tt = new Date(0);
+            if (transfer_info['start'] != undefined) {
+                tt.setUTCSeconds(transfer_info['start']);
+            };
             li.children("img").attr("src", "/static/" + hostname + ".jpg?" + new Date().getTime());
             li.children("a").text(hostname).attr("href", "/static/" + hostname + ".h264");
             li.children("span").text(
                 ": " + state.state + " @ " +
-                d + " [disk:" + state.df + "]");
+                d + " [disk:" + state.df + "] " +
+                tt + " [" + transfer_duration + "]");
             /*
             li.append(
                 $("<img>").attr("src", "/static/" + hostname + ".jpg?" + new Date().getTime()));
@@ -150,8 +159,8 @@ $(document).ready(function() {
     // get worker info from queen
     get_worker_info();
     get_queen_info();
-    window.setInterval(get_worker_info, 3000);
-    window.setInterval(get_queen_info, 3000);
+    window.setInterval(get_worker_info, 10000);
+    window.setInterval(get_queen_info, 10000);
 });
 
         </script>
