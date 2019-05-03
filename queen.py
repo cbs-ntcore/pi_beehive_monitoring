@@ -44,11 +44,22 @@ def get_ip_address(ifname='eth0'):
 
 # if worker and queen times differ by more than N seconds re-setup the worker
 RESYNC_THRESHOLD_SECONDS = 300
-monitor_device_id = 'jrdcLaptop'
+monitor_device_id = 'jdrcLaptop'
+monitor_url_template = 'http://lab.debivort.org/mu.php?id={device_id}&st={status}'
 scripts_directory = '/home/pi/scripts'
 videos_directory = '/home/pi/videos'
 this_directory = os.path.dirname(os.path.realpath(__file__))
 static_path = os.path.join(this_directory, 'static')
+
+
+def update_monitor(device_id, status=10005):
+    try:
+        urllib.request.urlopen(
+            monitor_url_template.format(
+                device_id=device_id,
+                status=status))
+    except Exception as e:
+        print("Failed to update monitor[%s]: %s" % (device_id, e))
 
 
 def extract_image(vfn, ifn, frame_number=3):
@@ -219,6 +230,7 @@ class Worker:
                     worker.last_transfer['result']))
             if worker.last_transfer['result'] == 0:
                 link_newest_worker_video(self.hostname, to_dir)
+                update_monitor(worker.hostname)
             else:
                 self.failed_transfer = self.last_transfer.copy()
 
@@ -263,12 +275,7 @@ class Queen(object):
 
     def fetch_worker_videos(self, to_dir=None, autoremove=False):
         # send monitor update
-        try:
-            urllib.request.urlopen(
-                'http://lab.debivort.org/mu.php?id=%s&st=10005'
-                % monitor_device_id)
-        except Exception as e:
-            print("Failed to update monitor: %s" % (e, ))
+        update_monitor(monitor_device_id)
         if to_dir is None:
             to_dir = videos_directory
         self.last_worker_transfer_time = time.time()
