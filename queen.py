@@ -215,10 +215,10 @@ class Worker:
                     worker.hostname,
                     worker.last_transfer_duration,
                     worker.last_transfer['result']))
-            if future.result == 0:
+            if worker.last_transfer['result'] == 0:
                 link_newest_worker_video(self.hostname, to_dir)
             else:
-                self.failed_transfer = self.last_trasnfer.copy()
+                self.failed_transfer = self.last_transfer.copy()
 
         f = self.fetch_process.wait_for_exit(raise_error=False)
         loop.add_future(f, transfer_done)
