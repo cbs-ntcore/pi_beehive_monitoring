@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 
 
 import tornado
@@ -43,6 +44,7 @@ def get_ip_address(ifname='eth0'):
 
 # if worker and queen times differ by more than N seconds re-setup the worker
 RESYNC_THRESHOLD_SECONDS = 300
+monitor_device_id = 'jrdcLaptop'
 scripts_directory = '/home/pi/scripts'
 videos_directory = '/home/pi/videos'
 this_directory = os.path.dirname(os.path.realpath(__file__))
@@ -260,6 +262,13 @@ class Queen(object):
             self.workers[hostname] = worker
 
     def fetch_worker_videos(self, to_dir=None, autoremove=False):
+        # send monitor update
+        try:
+            urllib.request.urlopen(
+                'http://lab.debivort.org/mu.php?id=%s&st=10005'
+                % monitor_device_id)
+        except Exception as e:
+            print("Failed to update monitor: %s" % (e, ))
         if to_dir is None:
             to_dir = videos_directory
         self.last_worker_transfer_time = time.time()
