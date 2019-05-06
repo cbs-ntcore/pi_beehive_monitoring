@@ -44,7 +44,7 @@ def get_ip_address(ifname='eth0'):
 
 # if worker and queen times differ by more than N seconds re-setup the worker
 RESYNC_THRESHOLD_SECONDS = 300
-monitor_device_id = 'jdrcLaptop'
+monitor_device_id = 'queen'
 monitor_url_template = 'http://lab.debivort.org/mu.php?id={device_id}&st={status}'
 scripts_directory = '/home/pi/scripts'
 videos_directory = '/home/pi/videos'
