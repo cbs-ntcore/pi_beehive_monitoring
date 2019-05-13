@@ -12,7 +12,7 @@ fi
 mkdir -p /home/pi/logs
 
 # make log filename
-FN="/home/pi/logs/queen_`date %y%m%d_%H%M%S`"
+FN="/home/pi/logs/queen_`date +%y%m%d_%H%M%S`"
 
 # start up queen, writing to log file
-python3 /home/pi/Repositories/cbs-ntcore/pi_beehive_monitoring/queen.py &> $FN
+python3 /home/pi/Repositories/cbs-ntcore/pi_beehive_monitoring/queen.py 2>&1 | tee $FN
