@@ -14,3 +14,5 @@ To start the queen if it's not running:
 cd /home/pi/Repositories/cbs-ntcore/pi_beehive_monitoring/scripts/
 ./run_queen.sh
 ```
+
+This will start the queen and setup a crontab entry to automatically restart the queen on reboot.
