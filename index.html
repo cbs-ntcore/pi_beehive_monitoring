@@ -39,10 +39,12 @@ new_worker_info = function(json) {
                 li.append($("<img>"));
                 li.append($("<a>"));
                 li.append($("<span>"));
+		/*
                 li.append(
                     $('<button>').on('click', function() {
                         set_worker_state(hostname, "streaming");
                      }).text("Stream").attr("class", "stream_button"));
+		*/
                 li.append(
                     $('<button>').on('click', function() {
                         set_worker_state(hostname, "recording");
@@ -83,11 +85,11 @@ new_worker_info = function(json) {
             // add config button
             // TODO show/hide buttons by state
             if (state.state == "idle") {
-                li.children(".stream_button").show();
+                //li.children(".stream_button").show();
                 li.children(".record_button").show();
                 li.children(".stop_button").hide();
             } else {
-                li.children(".stream_button").hide();
+                //li.children(".stream_button").hide();
                 li.children(".record_button").hide();
                 li.children(".stop_button").show();
             };
