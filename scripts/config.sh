@@ -3,6 +3,9 @@
 
 # where videos will be saved
 export VIDEO_DIR='/home/pi/videos'
+export RASPIVID_BASE_OPTS="-md 2"
+export RASPIVID_SAVE_OPTS="$RASPIVID_BASE_OPTS -t 20000 -n -fps 3"
+export RASPIVID_DISPLAY_OPTS="$RASPIVID_BASE_OPTS"
 
 # setup default editor
 export EDITOR=`which nano`

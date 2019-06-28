@@ -28,7 +28,8 @@ echo "Recording to $FN"
 bash /home/pi/scripts/purge_videos.sh
 
 # record for 20 seconds
-raspivid -o $TEMP_FN -t 20000 -n -fps 3 -md 2
+#raspivid -o $TEMP_FN -t 20000 -n -fps 3 -md 2
+raspivid -o $TEMP_FN $RASPIVID_SAVE_OPTS
 
 # move temp file to videos directory
 mv $TEMP_FN $FN
