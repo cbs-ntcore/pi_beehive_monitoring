@@ -63,12 +63,15 @@ def update_monitor(device_id, status=10005):
 
 
 def extract_image(vfn, ifn, frame_number=3):
+    # get base filename
+    bfn = os.path.splitext(os.path.basename(vfn))[0]
     # start subprocess to extract frame from video
     cmd = [
-        "ffmpeg", "-i", str(vfn),
-        "-vf", 'select=eq(n\,%s), scale=320:-2' % frame_number,
+        "ffmpeg", "-i", str(vfn), "-vf",
+        "select=eq(n\,%s), scale=320:-2, drawtext=text='%s':fontcolor=white:fontsize=12:x=(w-tw)/4:y=(h-th)/2:" % (frame_number, bfn),
         "-vframes", "1", "-q:v", "3", str(ifn), "-y"
     ]
+    print(" ".join(cmd))
     st = time.time()
     p = tornado.process.Subprocess(
         cmd,
