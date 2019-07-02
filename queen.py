@@ -110,6 +110,9 @@ def link_newest_worker_video(hostname, directory):
     ifn = os.path.join(static_path, hostname) + '.jpg'
     extract_image(sfn, ifn)
 
+    # return filename of newest video
+    return fn
+
 
 class Worker:
     def __init__(self, hostname, state, ip):
@@ -121,6 +124,7 @@ class Worker:
         self.stream = None
         self.fetch_process = None
         self.last_transfer = {}
+        self.newest_filename = ""
         self.last_transfer_duration = -1
         self.failed_transfer = None
 
@@ -206,7 +210,8 @@ class Worker:
                 cmd.split(),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL)
-            link_newest_worker_video(self.hostname, to_dir)
+            self.newest_filename = link_newest_worker_video(
+                self.hostname, to_dir)
             self.last_transfer = {'start': st, 'end': time.time()}
             self.last_transfer_duration = (
                 self.last_transfer['end'] - self.last_transfer['start'])
@@ -235,7 +240,8 @@ class Worker:
                     worker.last_transfer_duration,
                     worker.last_transfer['result']))
             if worker.last_transfer['result'] == 0:
-                link_newest_worker_video(self.hostname, to_dir)
+                self.newest_filename = link_newest_worker_video(
+                    self.hostname, to_dir)
                 update_monitor(worker.hostname)
             else:
                 self.failed_transfer = self.last_transfer.copy()
@@ -475,6 +481,7 @@ class WorkerQuery(tornado.web.RequestHandler):
             w = self.application.queen.workers[h]
             r[h] = {
                 'transfer_info': w.last_transfer,
+                'newest_filename': w.newest_filename,
                 'transfer_duration': w.last_transfer_duration,
                 'state': w.state}
         self.write(json.dumps(r))

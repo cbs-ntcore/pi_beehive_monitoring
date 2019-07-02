@@ -22,6 +22,17 @@ get_worker_info = function() {
     }).done(new_worker_info);
 };
 
+fn_to_date = function(fn) {
+    if (fn.length == 0) return new Date(0);
+    tokens = fn.split('/').pop().split('.')[0].split('_');
+    s = "20" + tokens[0].substring(0, 2) + "-"
+             + tokens[0].substring(2, 4) + "-"
+             + tokens[0].substring(4, 6) + "T"
+             + tokens[1].substring(0, 2) + ":"
+             + tokens[1].substring(2, 4);
+    var d = new Date(s);
+    return d
+};
 
 new_worker_info = function(json) {
     // update document given new worker info
@@ -39,12 +50,6 @@ new_worker_info = function(json) {
                 li.append($("<img>"));
                 li.append($("<a>"));
                 li.append($("<span>"));
-		/*
-                li.append(
-                    $('<button>').on('click', function() {
-                        set_worker_state(hostname, "streaming");
-                     }).text("Stream").attr("class", "stream_button"));
-		*/
                 li.append(
                     $('<button>').on('click', function() {
                         set_worker_state(hostname, "recording");
@@ -57,8 +62,10 @@ new_worker_info = function(json) {
             //li.empty();
             // update list item
             state = json[hostname]['state'];
+            newest_filename = json[hostname]['newest_filename'];
             transfer_duration = json[hostname]['transfer_duration'];
             transfer_info = json[hostname]['transfer_info'];
+            var fnd = fn_to_date(newest_filename);
             var d = new Date(0);
             d.setUTCSeconds(state.timestamp);
             var tt = new Date(0);
@@ -67,10 +74,13 @@ new_worker_info = function(json) {
             } else {
                 tt.setUTCSeconds(0);
             };
-            // if tt or d is more than ~5 min old, make them red
+            // if tt, fnd, or d is more than ~5 min old, make them red
             var cd = new Date();
             if (
-                    Math.max(Math.abs(cd - d), Math.abs(tt - d)) >
+                    Math.max(
+                        Math.abs(cd - d),
+                        Math.abs(tt - d),
+                        Math.abs(fnd - d)) >
                     (5 * 60 * 1000)) {
                 txt_color = "red";
             } else {
@@ -80,8 +90,9 @@ new_worker_info = function(json) {
             li.children("a").text(hostname).attr("href", "/static/" + hostname + ".h264");
             li.children("span").text(
                 ": " + state.state + " @ " +
-                d + " [disk:" + state.df + "] " +
-                tt + " [" + transfer_duration + "]").css("color", txt_color);
+                d + " [disk:" + state.df + "] last transfer @" +
+                tt + " [took:" + transfer_duration + "] newest video: " +
+		newest_filename).css("color", txt_color);
             // add config button
             // TODO show/hide buttons by state
             if (state.state == "idle") {
@@ -154,6 +165,6 @@ $(document).ready(function() {
         <ul id="worker_list">
             <!-- workers will get added here -->
         </ul>
-	<div id="queen_errors"></div>
+        <div id="queen_errors"></div>
     </body>
 </html>
