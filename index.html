@@ -56,6 +56,10 @@ new_worker_info = function(json) {
                      }).text("Record").attr("class", "record_button"));
                 li.append(
                     $('<button>').on('click', function() {
+                        set_worker_state(hostname, "continuous");
+                     }).text("Continuous").attr("class", "continuous_button"));
+                li.append(
+                    $('<button>').on('click', function() {
                         set_worker_state(hostname, "idle");
                      }).text("Stop").attr("class", "stop_button"));
             };
@@ -98,9 +102,11 @@ new_worker_info = function(json) {
             if (state.state == "idle") {
                 //li.children(".stream_button").show();
                 li.children(".record_button").show();
+                li.children(".continuous_button").show();
                 li.children(".stop_button").hide();
             } else {
                 //li.children(".stream_button").hide();
+                li.children(".continuous_button").hide();
                 li.children(".record_button").hide();
                 li.children(".stop_button").show();
             };

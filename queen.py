@@ -147,11 +147,18 @@ class Worker:
                 raise Exception("Can only start streaming from idle")
             self.start_streaming()
             return
+        elif new_state == 'continuous':
+            if self.state['state'] != 'idle':
+                raise Exception("Can only start continuous recording from idle")
+            self.start_continuous_recording()
+            return
         elif new_state == 'idle':
             if self.state['state'] == 'recording':
                 self.stop_recording()
             elif self.state['state'] == 'streaming':
                 self.stop_streaming()
+            elif self.state['state'] == 'continuous':
+                self.stop_continuous_recording()
             return
         else:
             raise Exception("Unknown state: %s" % (new_state, ))
@@ -191,6 +198,12 @@ class Worker:
     
     def stop_recording(self):
         self.run_script("stop_recording")
+
+    def start_continuous_recording(self):
+        self.run_script("start_continuous_recording")
+
+    def stop_continuous_recording(self):
+        self.run_script("stop_continuous_recording")
 
     def is_fetching(self):
         return self.fetch_process is not None
