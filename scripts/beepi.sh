@@ -32,7 +32,7 @@ function queen {
 
     # get queen pid (-1 if not running)
     QUEEN_PID=`ps aux | grep queen.py | grep python | awk '{print $2}'`
-    if [ -z $R ]; then
+    if [ -z $QUEEN_PID ]; then
         QUEEN_PID=-1
     fi
 
@@ -131,7 +131,7 @@ function worker {
 
 # check if worker or queen
 if [ `hostname` == 'queen' ]; then
-    queen
+    queen $@
 else
-    worker
+    worker $@
 fi
