@@ -1,5 +1,9 @@
-
 #!/bin/bash
+
+if [ ! -z "$VIDEO_DIR" ]; then
+    # echo "already configured, skipping"
+    return 0
+fi
 
 # where videos will be saved
 export VIDEO_DIR='/home/pi/videos'
