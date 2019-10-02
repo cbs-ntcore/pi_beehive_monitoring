@@ -23,6 +23,7 @@ get_worker_info = function() {
 };
 
 fn_to_date = function(fn) {
+    if (fn == null) return new Date(0);
     if (fn.length == 0) return new Date(0);
     tokens = fn.split('/').pop().split('.')[0].split('_');
     s = "20" + tokens[0].substring(0, 2) + "-"

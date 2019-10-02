@@ -133,6 +133,7 @@ class Worker:
             self.__class__, self.ip, self.hostname, self.state)
 
     def change_state(self, new_state):
+        print("Changing worker[%s] state: %s" % (self, new_state))
         if new_state == 'setup':
             return self.setup()
         if new_state == self.state['state']:
@@ -190,20 +191,24 @@ class Worker:
         pass
 
     def run_script(self, name):
-        cmd = "ssh pi@%s bash /home/pi/scripts/%s.sh" % (self.ip, name)
+        cmd = "ssh -t pi@%s bash /home/pi/scripts/%s.sh" % (self.ip, name)
         return subprocess.check_call(cmd.split())
 
     def start_recording(self):
         self.run_script("start_recording")
+        print("Started recording")
     
     def stop_recording(self):
         self.run_script("stop_recording")
+        print("Stopped recording")
 
     def start_continuous_recording(self):
         self.run_script("start_continuous_recording")
+        print("Started continuous recording")
 
     def stop_continuous_recording(self):
         self.run_script("stop_continuous_recording")
+        print("Stopped continuous recording")
 
     def is_fetching(self):
         return self.fetch_process is not None
@@ -382,6 +387,7 @@ class QueenSite(tornado.web.RequestHandler):
         #s += "\n"
         #self.write(s)
         template = os.path.join(this_directory, 'index.html')
+        print("Rendering:", template)
         self.render(template)
 
 
@@ -498,6 +504,7 @@ class WorkerQuery(tornado.web.RequestHandler):
                 'transfer_duration': w.last_transfer_duration,
                 'state': w.state}
         self.write(json.dumps(r))
+        print("Returning worker and state dict")
         return
     
     get = post
