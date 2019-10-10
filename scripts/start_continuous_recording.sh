@@ -25,3 +25,4 @@ echo "giving some time to start"
 sleep 1s
 
 echo "Started continuous recording"
+bash /home/pi/scripts/send_state.sh noblock
