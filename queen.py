@@ -191,7 +191,7 @@ class Worker:
         pass
 
     def run_script(self, name):
-        cmd = "ssh -t pi@%s bash /home/pi/scripts/%s.sh" % (self.ip, name)
+        cmd = "ssh -tt pi@%s bash /home/pi/scripts/%s.sh" % (self.ip, name)
         return subprocess.check_call(cmd.split())
 
     def start_recording(self):
