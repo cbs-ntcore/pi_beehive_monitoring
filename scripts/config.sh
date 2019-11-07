@@ -1,8 +1,17 @@
-
 #!/bin/bash
+
+if [ ! -z "$VIDEO_DIR" ]; then
+    # echo "already configured, skipping"
+    return 0
+fi
 
 # where videos will be saved
 export VIDEO_DIR='/home/pi/videos'
+export RASPIVID_BASE_OPTS="-md 2"
+export RASPIVID_SAVE_OPTS="$RASPIVID_BASE_OPTS -t 30000 -n -fps 5"
+export RASPIVID_CONTINUOUS_OPTS="$RASPIVID_BASE_OPTS -t 0 -n -fps 10"
+export RASPIVID_DISPLAY_OPTS="$RASPIVID_BASE_OPTS"
+export CRON_LINE="*/10 * * * * /home/pi/scripts/record.sh"
 
 # setup default editor
 export EDITOR=`which nano`

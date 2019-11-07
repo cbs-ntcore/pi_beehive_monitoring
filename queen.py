@@ -63,12 +63,15 @@ def update_monitor(device_id, status=10005):
 
 
 def extract_image(vfn, ifn, frame_number=3):
+    # get base filename
+    bfn = os.path.splitext(os.path.basename(vfn))[0]
     # start subprocess to extract frame from video
     cmd = [
-        "ffmpeg", "-i", str(vfn),
-        "-vf", 'select=eq(n\,%s), scale=320:-2' % frame_number,
+        "ffmpeg", "-i", str(vfn), "-vf",
+        "select=eq(n\,%s), scale=320:-2, drawtext=text='%s':fontcolor=white:fontsize=12:x=(w-tw)/4:y=(h-th)/2:" % (frame_number, bfn),
         "-vframes", "1", "-q:v", "3", str(ifn), "-y"
     ]
+    print(" ".join(cmd))
     st = time.time()
     p = tornado.process.Subprocess(
         cmd,
@@ -107,6 +110,9 @@ def link_newest_worker_video(hostname, directory):
     ifn = os.path.join(static_path, hostname) + '.jpg'
     extract_image(sfn, ifn)
 
+    # return filename of newest video
+    return fn
+
 
 class Worker:
     def __init__(self, hostname, state, ip):
@@ -118,6 +124,7 @@ class Worker:
         self.stream = None
         self.fetch_process = None
         self.last_transfer = {}
+        self.newest_filename = ""
         self.last_transfer_duration = -1
         self.failed_transfer = None
 
@@ -126,6 +133,7 @@ class Worker:
             self.__class__, self.ip, self.hostname, self.state)
 
     def change_state(self, new_state):
+        print("Changing worker[%s] state: %s" % (self, new_state))
         if new_state == 'setup':
             return self.setup()
         if new_state == self.state['state']:
@@ -140,11 +148,18 @@ class Worker:
                 raise Exception("Can only start streaming from idle")
             self.start_streaming()
             return
+        elif new_state == 'continuous':
+            if self.state['state'] != 'idle':
+                raise Exception("Can only start continuous recording from idle")
+            self.start_continuous_recording()
+            return
         elif new_state == 'idle':
             if self.state['state'] == 'recording':
                 self.stop_recording()
             elif self.state['state'] == 'streaming':
                 self.stop_streaming()
+            elif self.state['state'] == 'continuous':
+                self.stop_continuous_recording()
             return
         else:
             raise Exception("Unknown state: %s" % (new_state, ))
@@ -176,14 +191,24 @@ class Worker:
         pass
 
     def run_script(self, name):
-        cmd = "ssh pi@%s bash /home/pi/scripts/%s.sh" % (self.ip, name)
+        cmd = "ssh -tt pi@%s bash /home/pi/scripts/%s.sh" % (self.ip, name)
         return subprocess.check_call(cmd.split())
 
     def start_recording(self):
         self.run_script("start_recording")
+        print("Started recording")
     
     def stop_recording(self):
         self.run_script("stop_recording")
+        print("Stopped recording")
+
+    def start_continuous_recording(self):
+        self.run_script("start_continuous_recording")
+        print("Started continuous recording")
+
+    def stop_continuous_recording(self):
+        self.run_script("stop_continuous_recording")
+        print("Stopped continuous recording")
 
     def is_fetching(self):
         return self.fetch_process is not None
@@ -203,7 +228,8 @@ class Worker:
                 cmd.split(),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL)
-            link_newest_worker_video(self.hostname, to_dir)
+            self.newest_filename = link_newest_worker_video(
+                self.hostname, to_dir)
             self.last_transfer = {'start': st, 'end': time.time()}
             self.last_transfer_duration = (
                 self.last_transfer['end'] - self.last_transfer['start'])
@@ -232,7 +258,8 @@ class Worker:
                     worker.last_transfer_duration,
                     worker.last_transfer['result']))
             if worker.last_transfer['result'] == 0:
-                link_newest_worker_video(self.hostname, to_dir)
+                self.newest_filename = link_newest_worker_video(
+                    self.hostname, to_dir)
                 update_monitor(worker.hostname)
             else:
                 self.failed_transfer = self.last_transfer.copy()
@@ -360,6 +387,7 @@ class QueenSite(tornado.web.RequestHandler):
         #s += "\n"
         #self.write(s)
         template = os.path.join(this_directory, 'index.html')
+        print("Rendering:", template)
         self.render(template)
 
 
@@ -472,9 +500,11 @@ class WorkerQuery(tornado.web.RequestHandler):
             w = self.application.queen.workers[h]
             r[h] = {
                 'transfer_info': w.last_transfer,
+                'newest_filename': w.newest_filename,
                 'transfer_duration': w.last_transfer_duration,
                 'state': w.state}
         self.write(json.dumps(r))
+        print("Returning worker and state dict")
         return
     
     get = post
