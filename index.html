@@ -152,7 +152,7 @@ new_queen_info = function(json) {
                 .done(get_queen_info);
         }).text("Transfer videos"));
     // display errors
-    $("#queen_errors").text(json.errors);
+    $("#queen_errors").text(JSON.stringify(json.errors));
 };
 
 

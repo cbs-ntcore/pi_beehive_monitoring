@@ -115,7 +115,7 @@ function worker {
             ;;
         display)
             # make sure state is idle
-            if [ "$STATE" -ne "idle" ]; then
+            if [ "$STATE" != "idle" ]; then
                 echo "Worker[$STATE] must be idle to display video"
                 exit 1
             fi
